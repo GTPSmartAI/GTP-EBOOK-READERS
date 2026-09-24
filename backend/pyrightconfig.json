@@ -1,0 +1,24 @@
+{
+  "include": [
+    "main.py",
+    "api_server.py",
+    "shared/python",
+    "components",
+    "scripts"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "uploads"
+  ],
+  "extraPaths": [
+    "shared/python",
+    "components/ProcessadorLivros/python",
+    "components/GestaoAssinaturas/python",
+    "components/SinteseVoz/python",
+    "components/AssistenteIA/python",
+    "components/AlertasErro/python"
+  ],
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Windows",
+  "typeCheckingMode": "basic"
+}

@@ -1,0 +1,54 @@
+{
+  "name": "ElevenReader - Automação de Assinaturas e Ativação",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "elevenreader-payment-webhook",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook Pagamento Aprovado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/api/webhooks/payment",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": \"{{ $json.body.email || $json.body.buyer?.email || $json.body.customer?.email }}\",\n  \"plan\": \"pro\",\n  \"amount\": \"{{ $json.body.value || $json.body.amount || 29.90 }}\",\n  \"status\": \"paid\",\n  \"gateway\": \"{{ $json.body.gateway || 'kiwify' }}\",\n  \"transaction_id\": \"{{ $json.body.order_id || $json.body.id || 'order_' + Date.now() }}\"\n}"
+      },
+      "id": "2",
+      "name": "Ativar Plano no Supabase (ElevenReader)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [500, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Pagamento Aprovado": {
+      "main": [
+        [
+          {
+            "node": "Ativar Plano no Supabase (ElevenReader)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

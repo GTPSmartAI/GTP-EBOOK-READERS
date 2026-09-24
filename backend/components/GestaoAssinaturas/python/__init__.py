@@ -1,0 +1,2 @@
+# Package GestaoAssinaturas
+from .subscription_service import process_incoming_payment_webhook

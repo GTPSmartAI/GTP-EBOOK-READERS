@@ -1,0 +1,63 @@
+# Dependências Node.js
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build do Frontend
+dist/
+frontend/dist/
+dist-ssr/
+*.local
+
+# Python & Ambientes Virtuais
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+eggs/
+.eggs/
+parts/
+var/
+sdist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs e arquivos de execução
+*.log
+automation.log
+backend/automation.log
+
+# Uploads locais de teste e cache de áudio
+backend/uploads/audio_cache/*
+backend/uploads/cloned_samples/*
+backend/uploads/*.pdf
+backend/uploads/*.txt
+!backend/uploads/.gitkeep
+!backend/uploads/audio_cache/.gitkeep
+!backend/uploads/cloned_samples/.gitkeep
+
+# Variáveis de ambiente sensíveis
+.env
+backend/.env
+.env.local
+.env.*.local
+
+# IDEs e Sistema Operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
