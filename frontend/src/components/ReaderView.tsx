@@ -9,6 +9,7 @@ interface ReaderViewProps {
   viewMode: 'flow' | 'pdf';
   onSentenceClick: (sentenceIndex: number) => void;
   onPlayChapter: (startIndex: number) => void;
+  onWordClick?: (sentenceIndex: number, wordIndex: number, word: string) => void;
 }
 
 export const ReaderView: React.FC<ReaderViewProps> = ({
@@ -18,6 +19,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   viewMode,
   onSentenceClick,
   onPlayChapter,
+  onWordClick,
 }) => {
   const activeSentenceRef = useRef<HTMLSpanElement | null>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
@@ -41,7 +43,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     if (container) {
       container.addEventListener('wheel', handleUserScroll, { passive: true });
       container.addEventListener('touchmove', handleUserScroll, { passive: true });
-      container.addEventListener('scroll', handleUserScroll, { passive: true });
     }
     window.addEventListener('wheel', handleUserScroll, { passive: true });
     window.addEventListener('touchmove', handleUserScroll, { passive: true });
@@ -49,7 +50,6 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       if (container) {
         container.removeEventListener('wheel', handleUserScroll);
         container.removeEventListener('touchmove', handleUserScroll);
-        container.removeEventListener('scroll', handleUserScroll);
       }
       window.removeEventListener('wheel', handleUserScroll);
       window.removeEventListener('touchmove', handleUserScroll);
@@ -60,8 +60,9 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   // Sincroniza e centraliza na frase que a IA está lendo
   const handleSyncWithVoice = () => {
     setIsDetachedFromVoice(false);
-    if (activeSentenceRef.current) {
-      activeSentenceRef.current.scrollIntoView({
+    const target = activeSentenceRef.current || document.getElementById(`sentence-anchor-${currentSentenceIndex}`);
+    if (target) {
+      target.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
@@ -70,19 +71,22 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
   // Auto-scroll para sentença ativa apenas se o usuário não estiver rolando livremente
   useEffect(() => {
-    if (!settings.autoScroll || isDetachedFromVoice || !activeSentenceRef.current) {
+    if (!settings.autoScroll || isDetachedFromVoice) {
       return;
     }
 
-    const rect = activeSentenceRef.current.getBoundingClientRect();
-    const isVisibleInViewport = rect.top >= 100 && rect.bottom <= window.innerHeight - 140;
+    const target = activeSentenceRef.current || document.getElementById(`sentence-anchor-${currentSentenceIndex}`);
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      const isVisibleInViewport = rect.top >= 120 && rect.bottom <= window.innerHeight - 150;
 
-    // Se já estiver visível na janela, não força solavanco
-    if (!isVisibleInViewport) {
-      activeSentenceRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+      // Se já estiver visível na janela, não força solavanco
+      if (!isVisibleInViewport) {
+        target.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
     }
   }, [currentSentenceIndex, settings.autoScroll, isDetachedFromVoice]);
 
@@ -120,6 +124,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         paragraphs.push(
           <div
             key={`chapter-${idx}`}
+            id={`chapter-anchor-${idx}`}
             style={{
               margin: '48px 0 24px 0',
               paddingBottom: '16px',
@@ -127,6 +132,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              scrollMarginTop: '80px',
             }}
           >
             <div>
@@ -150,7 +156,10 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             </div>
 
             <button
-              onClick={() => onPlayChapter(idx)}
+              onClick={() => {
+                setIsDetachedFromVoice(false);
+                onPlayChapter(idx);
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -162,6 +171,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
                 color: 'var(--text-secondary)',
                 fontSize: '12px',
                 fontWeight: 500,
+                cursor: 'pointer',
               }}
               title="Ouvir a partir deste capítulo"
             >
@@ -201,14 +211,48 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
       >
         {items.map(({ text, index }) => {
           const isActive = index === currentSentenceIndex;
+          const tokens = text.split(/(\s+)/);
+          let wordIdxCounter = 0;
+
           return (
             <span
               key={index}
+              id={`sentence-anchor-${index}`}
               ref={isActive ? activeSentenceRef : null}
-              onClick={() => onSentenceClick(index)}
+              onClick={() => {
+                setIsDetachedFromVoice(false);
+                onSentenceClick(index);
+              }}
               className={`reading-sentence ${isActive ? 'active' : ''}`}
+              style={{ scrollMarginTop: '120px' }}
             >
-              {text}{' '}
+              {tokens.map((token, tIdx) => {
+                const isWhitespace = /^\s+$/.test(token);
+                if (isWhitespace) {
+                  return <React.Fragment key={tIdx}>{token}</React.Fragment>;
+                }
+                const wordIndex = wordIdxCounter++;
+                return (
+                  <span
+                    key={tIdx}
+                    id={`word-anchor-${index}-${wordIndex}`}
+                    className="clickable-word"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsDetachedFromVoice(false);
+                      if (onWordClick) {
+                        onWordClick(index, wordIndex, token);
+                      } else {
+                        onSentenceClick(index);
+                      }
+                    }}
+                    title="Clique para iniciar a leitura a partir desta palavra"
+                  >
+                    {token}
+                  </span>
+                );
+              })}
+              {' '}
             </span>
           );
         })}

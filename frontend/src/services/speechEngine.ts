@@ -245,6 +245,83 @@ class SpeechEngine {
   }
 
   /**
+   * Salta para uma palavra específica dentro de uma sentença e inicia a fala dali
+   */
+  public jumpToSentenceFromWord(sentenceIndex: number, wordIndex: number) {
+    const validIndex = Math.max(0, Math.min(sentenceIndex, this.sentences.length - 1));
+    this.currentIndex = validIndex;
+    this.callbacks.onSentenceChange(validIndex);
+
+    const fullText = this.sentences[validIndex] || '';
+    const words = fullText.split(/\s+/).filter(Boolean);
+
+    if (wordIndex <= 0 || wordIndex >= words.length) {
+      if (this.status === 'playing') {
+        this.speakCurrentSentence();
+      }
+      return;
+    }
+
+    const remainingSlice = words.slice(wordIndex).join(' ');
+    this.speakTextSlice(validIndex, remainingSlice);
+  }
+
+  /**
+   * Fala um trecho fatiado a partir do clique no meio de uma frase
+   */
+  private async speakTextSlice(sentenceIndex: number, sliceText: string) {
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio = null;
+    }
+    if (this.synth) {
+      this.synth.cancel();
+    }
+
+    this.setStatus('playing');
+    this.startWaveformSimulation();
+
+    // Tenta síntese rápida do trecho
+    try {
+      const voiceId = this.voiceOption?.id || 'francisca-dramatica';
+      const response = await fetch(`${BACKEND_URL}/api/tts/synthesize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: sliceText,
+          voice_id: voiceId,
+          emotion: this.emotion,
+          rate: this.rate,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.audio_url) {
+          const audioUrl = `${BACKEND_URL}${result.audio_url}`;
+          const audio = new Audio(audioUrl);
+          audio.playbackRate = this.rate;
+          this.currentAudio = audio;
+          audio.onended = () => {
+            if (this.status === 'playing' && this.currentIndex === sentenceIndex) {
+              this.nextSentence();
+            }
+          };
+          audio.onerror = () => {
+            this.speakNative(sliceText, sentenceIndex);
+          };
+          audio.play().catch(() => this.speakNative(sliceText, sentenceIndex));
+          return;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    this.speakNative(sliceText, sentenceIndex);
+  }
+
+  /**
    * Dispara o pré-carregamento contínuo em lote (buffer de 3 a 4 páginas adiante)
    */
   private async triggerContinuousBufferPrefetch(fromIndex: number) {

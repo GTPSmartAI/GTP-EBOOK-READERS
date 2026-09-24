@@ -17,6 +17,7 @@ interface LeitorPageProps {
   settings: ReaderSettings;
   onSentenceClick: (sentenceIndex: number) => void;
   onPlayChapter: (startIndex: number) => void;
+  onWordClick?: (sentenceIndex: number, wordIndex: number, word: string) => void;
   onOpenChapters: () => void;
   onOpenAIChat: () => void;
   onBackToPainel: () => void;
@@ -29,6 +30,7 @@ export const Leitor: React.FC<LeitorPageProps> = ({
   settings,
   onSentenceClick,
   onPlayChapter,
+  onWordClick,
   onOpenChapters,
   onOpenAIChat,
   onBackToPainel,
@@ -323,7 +325,16 @@ export const Leitor: React.FC<LeitorPageProps> = ({
               return (
                 <button
                   key={ch.id || `ch-${idx}`}
-                  onClick={() => onPlayChapter(ch.startIndex)}
+                  onClick={() => {
+                    onPlayChapter(ch.startIndex);
+                    setTimeout(() => {
+                      const chapterEl = document.getElementById(`chapter-anchor-${ch.startIndex}`) ||
+                                        document.getElementById(`sentence-anchor-${ch.startIndex}`);
+                      if (chapterEl) {
+                        chapterEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 50);
+                  }}
                   style={{
                     padding: '10px 14px',
                     borderRadius: '10px',
@@ -433,6 +444,7 @@ export const Leitor: React.FC<LeitorPageProps> = ({
             viewMode={viewMode}
             onSentenceClick={onSentenceClick}
             onPlayChapter={onPlayChapter}
+            onWordClick={onWordClick}
           />
         </div>
       </div>

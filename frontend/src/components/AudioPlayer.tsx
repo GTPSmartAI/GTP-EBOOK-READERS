@@ -52,11 +52,54 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   const totalSentences = currentBook.sentences.length;
   const currentSentence = currentBook.sentences[currentSentenceIndex] || '';
-  const progressPercent = totalSentences > 0 ? (currentSentenceIndex / (totalSentences - 1)) * 100 : 0;
+  const progressPercent = totalSentences > 1 ? (currentSentenceIndex / (totalSentences - 1)) * 100 : 0;
 
-  // Approximate remaining minutes
-  const remainingSentences = Math.max(0, totalSentences - currentSentenceIndex);
-  const remainingMinutes = Math.max(1, Math.ceil((remainingSentences * 12) / (60 * speed)));
+  // Formatação de áudio MM:SS ou HH:MM:SS
+  const formatAudioTime = (seconds: number): string => {
+    const safeSec = Math.max(0, Math.floor(seconds));
+    const hrs = Math.floor(safeSec / 3600);
+    const mins = Math.floor((safeSec % 3600) / 60);
+    const secs = safeSec % 60;
+
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Ritmo de leitura ajustado pela velocidade
+  const effectiveWps = Math.max(0.1, (145 * speed) / 60);
+
+  // Total de palavras no documento
+  const totalWordsCount = React.useMemo(() => {
+    return currentBook.sentences.reduce((acc, s) => acc + s.trim().split(/\s+/).filter(Boolean).length, 0);
+  }, [currentBook.sentences]);
+
+  // Palavras acumuladas até a sentença atual
+  const wordsReadCount = React.useMemo(() => {
+    return currentBook.sentences.slice(0, currentSentenceIndex).reduce((acc, s) => acc + s.trim().split(/\s+/).filter(Boolean).length, 0);
+  }, [currentBook.sentences, currentSentenceIndex]);
+
+  const [currentPlaySecond, setCurrentPlaySecond] = useState(0);
+
+  // Sincroniza o segundo quando a sentença ou velocidade muda
+  React.useEffect(() => {
+    const baseSec = Math.round(wordsReadCount / effectiveWps);
+    setCurrentPlaySecond(baseSec);
+  }, [wordsReadCount, effectiveWps]);
+
+  // Cronômetro ativo quando estiver reproduzindo (avança segundo a segundo: 10:00, 10:01, etc.)
+  React.useEffect(() => {
+    if (playbackStatus !== 'playing') return;
+    const timer = setInterval(() => {
+      setCurrentPlaySecond((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [playbackStatus]);
+
+  const totalDurationSeconds = Math.max(1, Math.round(totalWordsCount / effectiveWps));
+  const elapsedDisplaySeconds = Math.min(totalDurationSeconds, currentPlaySecond);
+  const remainingDisplaySeconds = Math.max(0, totalDurationSeconds - elapsedDisplaySeconds);
 
   return (
     <div style={{
@@ -75,7 +118,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       flexDirection: 'column',
       gap: '8px',
     }}>
-      {/* Scrubber / Timeline bar */}
+      {/* Scrubber / Timeline bar com tempo decorrido e restante */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -84,11 +127,19 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         maxWidth: '1200px',
         margin: '0 auto',
       }}>
-        <span style={{ fontSize: '11px', color: 'var(--text-muted)', minWidth: '40px', textAlign: 'right' }}>
-          {currentSentenceIndex + 1} / {totalSentences}
+        {/* Tempo decorrido (ex: 10:00, 10:01) */}
+        <span style={{
+          fontSize: '11px',
+          color: '#94a3b8',
+          minWidth: '46px',
+          textAlign: 'right',
+          fontFamily: 'monospace',
+          fontWeight: 700,
+        }}>
+          {formatAudioTime(elapsedDisplaySeconds)}
         </span>
 
-        {/* Timeline Slider */}
+        {/* Timeline Slider Interativo */}
         <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
           <input
             type="range"
@@ -102,14 +153,21 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               borderRadius: '2px',
               accentColor: 'var(--accent-primary)',
               cursor: 'pointer',
-              background: `linear-gradient(to right, var(--accent-primary) 0%, var(--accent-primary) ${progressPercent}%, rgba(255,255,255,0.1) ${progressPercent}%, rgba(255,255,255,0.1) 100%)`,
+              background: `linear-gradient(to right, var(--accent-primary) 0%, var(--accent-primary) ${progressPercent}%, rgba(255,255,255,0.15) ${progressPercent}%, rgba(255,255,255,0.15) 100%)`,
               outline: 'none',
             }}
           />
         </div>
 
-        <span style={{ fontSize: '11px', color: 'var(--text-muted)', minWidth: '70px' }}>
-          ~{remainingMinutes} min rest.
+        {/* Tempo restante (ex: -12:30) */}
+        <span style={{
+          fontSize: '11px',
+          color: '#94a3b8',
+          minWidth: '55px',
+          fontFamily: 'monospace',
+          fontWeight: 700,
+        }}>
+          -{formatAudioTime(remainingDisplaySeconds)}
         </span>
       </div>
 
@@ -169,7 +227,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         </div>
 
         {/* Center: Playback buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           {/* Previous sentence */}
           <button
             onClick={onPrevSentence}
@@ -178,23 +236,45 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               color: currentSentenceIndex <= 0 ? 'var(--text-muted)' : 'var(--text-secondary)',
               padding: '6px',
               borderRadius: '50%',
+              cursor: currentSentenceIndex <= 0 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
             title="Frase Anterior"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={20} />
           </button>
 
-          {/* Skip Back 10s */}
+          {/* Voltar 15 segundos */}
           <button
             onClick={onSkipBack}
             style={{
-              color: 'var(--text-secondary)',
-              padding: '6px',
+              position: 'relative',
+              width: '36px',
+              height: '36px',
               borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#f8fafc',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              cursor: 'pointer',
+              transition: 'all 150ms ease',
             }}
-            title="Voltar 10s"
+            title="Voltar 15 segundos"
           >
-            <RotateCcw size={18} />
+            <RotateCcw size={20} strokeWidth={2.2} />
+            <span style={{
+              position: 'absolute',
+              fontSize: '8px',
+              fontWeight: 900,
+              color: '#10b981',
+              marginTop: '2px',
+            }}>
+              15
+            </span>
           </button>
 
           {/* Master Play/Pause with Radiant Halo */}
@@ -220,17 +300,35 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             {playbackStatus === 'playing' ? <Pause size={22} /> : <Play size={22} style={{ marginLeft: '3px' }} />}
           </button>
 
-          {/* Skip Forward 10s */}
+          {/* Avançar 15 segundos */}
           <button
             onClick={onSkipForward}
             style={{
-              color: 'var(--text-secondary)',
-              padding: '6px',
+              position: 'relative',
+              width: '36px',
+              height: '36px',
               borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#f8fafc',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              cursor: 'pointer',
+              transition: 'all 150ms ease',
             }}
-            title="Avançar 10s"
+            title="Avançar 15 segundos"
           >
-            <RotateCw size={18} />
+            <RotateCw size={20} strokeWidth={2.2} />
+            <span style={{
+              position: 'absolute',
+              fontSize: '8px',
+              fontWeight: 900,
+              color: '#10b981',
+              marginTop: '2px',
+            }}>
+              15
+            </span>
           </button>
 
           {/* Next sentence */}
@@ -241,10 +339,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               color: currentSentenceIndex >= totalSentences - 1 ? 'var(--text-muted)' : 'var(--text-secondary)',
               padding: '6px',
               borderRadius: '50%',
+              cursor: currentSentenceIndex >= totalSentences - 1 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
             title="Próxima Frase"
           >
-            <ChevronRight size={18} />
+            <ChevronRight size={20} />
           </button>
         </div>
 

@@ -318,26 +318,76 @@ export const App: React.FC = () => {
   };
 
   const handlePrevSentence = () => {
-    speechEngine.prevSentence();
+    if (currentSentenceIndex > 0) {
+      const newIdx = currentSentenceIndex - 1;
+      setCurrentSentenceIndex(newIdx);
+      speechEngine.prevSentence();
+      setTimeout(() => {
+        const sentEl = document.getElementById(`sentence-anchor-${newIdx}`);
+        sentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 40);
+    }
   };
 
   const handleNextSentence = () => {
-    speechEngine.nextSentence();
+    if (!currentBook || !currentBook.sentences) return;
+    if (currentSentenceIndex < currentBook.sentences.length - 1) {
+      const newIdx = currentSentenceIndex + 1;
+      setCurrentSentenceIndex(newIdx);
+      speechEngine.nextSentence();
+      setTimeout(() => {
+        const sentEl = document.getElementById(`sentence-anchor-${newIdx}`);
+        sentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 40);
+    }
   };
 
+  // Volta aproximadamente 15 segundos de leitura
   const handleSkipBack = () => {
-    const newIdx = Math.max(0, currentSentenceIndex - 2);
+    if (!currentBook || !currentBook.sentences) return;
+    const targetWords = Math.max(18, Math.round(((145 * settings.speechRate) / 60) * 15));
+    let accumulated = 0;
+    let targetIdx = currentSentenceIndex;
+    while (targetIdx > 0 && accumulated < targetWords) {
+      targetIdx--;
+      accumulated += (currentBook.sentences[targetIdx] || '').split(/\s+/).filter(Boolean).length;
+    }
+    const newIdx = Math.max(0, targetIdx);
+    setCurrentSentenceIndex(newIdx);
     speechEngine.jumpToSentence(newIdx);
+    setTimeout(() => {
+      const sentEl = document.getElementById(`sentence-anchor-${newIdx}`);
+      sentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 40);
   };
 
+  // Avança aproximadamente 15 segundos de leitura
   const handleSkipForward = () => {
-    if (!currentBook) return;
-    const newIdx = Math.min(currentBook.sentences.length - 1, currentSentenceIndex + 2);
+    if (!currentBook || !currentBook.sentences) return;
+    const targetWords = Math.max(18, Math.round(((145 * settings.speechRate) / 60) * 15));
+    let accumulated = 0;
+    let targetIdx = currentSentenceIndex;
+    const maxIdx = currentBook.sentences.length - 1;
+    while (targetIdx < maxIdx && accumulated < targetWords) {
+      targetIdx++;
+      accumulated += (currentBook.sentences[targetIdx] || '').split(/\s+/).filter(Boolean).length;
+    }
+    const newIdx = Math.min(maxIdx, targetIdx);
+    setCurrentSentenceIndex(newIdx);
     speechEngine.jumpToSentence(newIdx);
+    setTimeout(() => {
+      const sentEl = document.getElementById(`sentence-anchor-${newIdx}`);
+      sentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 40);
   };
 
   const handleSeek = (index: number) => {
+    setCurrentSentenceIndex(index);
     speechEngine.jumpToSentence(index);
+    setTimeout(() => {
+      const sentEl = document.getElementById(`sentence-anchor-${index}`);
+      sentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 40);
   };
 
   const handleChangeSpeed = (speed: number) => {
@@ -352,15 +402,43 @@ export const App: React.FC = () => {
   };
 
   const handleSentenceClick = (index: number) => {
+    setCurrentSentenceIndex(index);
     speechEngine.jumpToSentence(index);
     if (playbackStatus !== 'playing') {
       speechEngine.play(index);
     }
+    setTimeout(() => {
+      const sentEl = document.getElementById(`sentence-anchor-${index}`);
+      sentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 40);
+  };
+
+  const handleWordClick = (sentenceIndex: number, wordIndex: number, _word: string) => {
+    setCurrentSentenceIndex(sentenceIndex);
+    speechEngine.jumpToSentenceFromWord(sentenceIndex, wordIndex);
+    if (playbackStatus !== 'playing') {
+      speechEngine.play(sentenceIndex);
+    }
+    setTimeout(() => {
+      const wordEl = document.getElementById(`word-anchor-${sentenceIndex}-${wordIndex}`);
+      if (wordEl) {
+        wordEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        const sentEl = document.getElementById(`sentence-anchor-${sentenceIndex}`);
+        sentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 40);
   };
 
   const handlePlayChapter = (startIndex: number) => {
+    setCurrentSentenceIndex(startIndex);
     speechEngine.jumpToSentence(startIndex);
     speechEngine.play(startIndex);
+    setTimeout(() => {
+      const chapterEl = document.getElementById(`chapter-anchor-${startIndex}`) ||
+                        document.getElementById(`sentence-anchor-${startIndex}`);
+      chapterEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 40);
   };
 
   const handleOpenBookInReader = (book: Book) => {
@@ -467,6 +545,7 @@ export const App: React.FC = () => {
             settings={settings}
             onSentenceClick={handleSentenceClick}
             onPlayChapter={handlePlayChapter}
+            onWordClick={handleWordClick}
             onOpenChapters={() => setIsChaptersOpen(true)}
             onOpenAIChat={() => setIsAIChatOpen(true)}
             onBackToPainel={() => setActivePage('painel')}
