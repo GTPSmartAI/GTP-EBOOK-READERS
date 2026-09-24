@@ -32,6 +32,7 @@ class SpeechEngine {
   };
   private waveformInterval: number | null = null;
   private nativeVoices: SpeechSynthesisVoice[] = [];
+  private currentUtterance: SpeechSynthesisUtterance | null = null;
 
   constructor() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -169,19 +170,31 @@ class SpeechEngine {
       this.preloadedNextAudio = null;
     }
 
-    if (this.status === 'paused' && this.currentAudio) {
-      this.currentAudio.play();
-      this.setStatus('playing');
-      this.startWaveformSimulation();
-      return;
-    }
+    // Se estiver pausado, retoma imediatamente
+    if (this.status === 'paused') {
+      // 1. Se tem áudio HTML que estava tocando
+      if (this.currentAudio && !this.currentAudio.ended && this.currentAudio.currentTime > 0) {
+        try {
+          await this.currentAudio.play();
+          this.setStatus('playing');
+          this.startWaveformSimulation();
+          return;
+        } catch (e) {
+          console.warn('[Audio] Erro ao retomar elemento pausado, reiniciando sentença:', e);
+        }
+      }
 
-    // Se o áudio atual não estiver no buffer, mostra estado de processando/preparando
-    if (!this.audioBuffer.has(this.currentIndex)) {
-      this.setStatus('buffering');
-      this.callbacks.onBufferProgress?.(true, '⚡ Processando narrativa com suspense e pontuação...');
-      await this.preloadInitialBuffer(this.currentIndex, 8);
-      this.callbacks.onBufferProgress?.(false, '');
+      // 2. Garante que qualquer síntese nativa do Chromium seja destravada
+      if (this.synth) {
+        try {
+          this.synth.cancel();
+          this.synth.resume();
+        } catch (e) {}
+      }
+
+      // 3. Reinicia a fala da sentença atual de imediato
+      this.speakCurrentSentence();
+      return;
     }
 
     this.speakCurrentSentence();
@@ -189,10 +202,22 @@ class SpeechEngine {
 
   public pause() {
     if (this.currentAudio) {
-      this.currentAudio.pause();
+      try {
+        this.currentAudio.pause();
+      } catch (e) {}
     }
-    if (this.synth && this.synth.speaking) {
-      this.synth.pause();
+    if (this.synth) {
+      try {
+        // No Chromium, synth.pause() congela a fila e quebra despausar!
+        // Chamamos cancel() e resume() para manter o motor de voz pronto e limpo
+        this.synth.cancel();
+        this.synth.resume();
+      } catch (e) {}
+    }
+    if (this.currentUtterance) {
+      this.currentUtterance.onend = null;
+      this.currentUtterance.onerror = null;
+      this.currentUtterance = null;
     }
     this.setStatus('paused');
     this.stopWaveformSimulation();
@@ -200,12 +225,22 @@ class SpeechEngine {
 
   public stop() {
     if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.currentTime = 0;
+      try {
+        this.currentAudio.pause();
+        this.currentAudio.currentTime = 0;
+      } catch (e) {}
       this.currentAudio = null;
     }
     if (this.synth) {
-      this.synth.cancel();
+      try {
+        this.synth.cancel();
+        this.synth.resume();
+      } catch (e) {}
+    }
+    if (this.currentUtterance) {
+      this.currentUtterance.onend = null;
+      this.currentUtterance.onerror = null;
+      this.currentUtterance = null;
     }
     this.setStatus('idle');
     this.stopWaveformSimulation();
@@ -375,11 +410,16 @@ class SpeechEngine {
 
   private async speakCurrentSentence() {
     if (this.currentAudio) {
-      this.currentAudio.pause();
+      try {
+        this.currentAudio.pause();
+      } catch (e) {}
       this.currentAudio = null;
     }
     if (this.synth) {
-      this.synth.cancel();
+      try {
+        this.synth.cancel();
+        this.synth.resume();
+      } catch (e) {}
     }
 
     if (this.currentIndex >= this.sentences.length) {
@@ -405,12 +445,16 @@ class SpeechEngine {
       return;
     }
 
-    // 2. Se não estiver no buffer, sintetiza imediatamente via API Neural
+    // 2. Se não estiver no buffer, sintetiza com timeout rápido de 3.5s para não prender a interface
     try {
       const voiceId = this.voiceOption?.id || 'francisca-dramatica';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
       const response = await fetch(`${BACKEND_URL}/api/tts/synthesize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           text,
           voice_id: voiceId,
@@ -418,6 +462,7 @@ class SpeechEngine {
           rate: this.rate,
         }),
       });
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const result = await response.json();
@@ -429,10 +474,10 @@ class SpeechEngine {
         }
       }
     } catch (apiErr) {
-      console.warn('Backend TTS indisponível, usando fallback nativo do navegador:', apiErr);
+      console.warn('Backend TTS indisponível ou demorado, usando síntese nativa:', apiErr);
     }
 
-    // 3. Fallback: síntese nativa do navegador
+    // 3. Fallback instantâneo: síntese nativa do navegador
     this.speakNative(text, currentIdx);
   }
 
@@ -481,15 +526,25 @@ class SpeechEngine {
       this.speakNative(this.sentences[index], index);
     };
 
-    audio.play().catch((err) => {
-      console.warn('Autoplay bloqueado ou erro no áudio:', err);
-    });
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn('Autoplay bloqueado ou erro no áudio, usando fallback imediato:', err);
+        this.speakNative(this.sentences[index], index);
+      });
+    }
   }
 
   private speakNative(text: string, index: number) {
     if (!this.synth) return;
 
+    try {
+      this.synth.cancel();
+      this.synth.resume();
+    } catch (e) {}
+
     const utterance = new SpeechSynthesisUtterance(text);
+    this.currentUtterance = utterance; // Mantém referência viva contra o Garbage Collector do Chromium
     utterance.rate = Math.max(0.5, Math.min(2.0, this.rate));
     utterance.pitch = Math.max(0.5, Math.min(2.0, this.pitch));
 
@@ -500,11 +555,22 @@ class SpeechEngine {
     }
 
     utterance.onend = () => {
+      this.currentUtterance = null;
       if (this.status === 'playing' && this.currentIndex === index) {
         this.nextSentence();
       }
     };
 
+    utterance.onerror = (e) => {
+      console.warn('Erro na síntese nativa:', e);
+      this.currentUtterance = null;
+      if (this.status === 'playing' && this.currentIndex === index) {
+        this.nextSentence();
+      }
+    };
+
+    this.setStatus('playing');
+    this.startWaveformSimulation();
     this.synth.speak(utterance);
   }
 
