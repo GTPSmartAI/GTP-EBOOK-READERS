@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import JSZip from 'jszip';
 import { splitIntoSentences, countWords, estimateDurationMinutes } from '../utils/textParser';
 import type { Book } from '../types';
 
@@ -47,6 +48,137 @@ export async function parsePdfFile(file: File): Promise<ParsedPdfResult> {
     totalPages,
     durationMinutes,
     pageTexts,
+  };
+}
+
+export interface ParsedEpubResult {
+  fullText: string;
+  sentences: string[];
+  totalWords: number;
+  durationMinutes: number;
+  chapters: { id: string; title: string; startIndex: number }[];
+}
+
+export async function parseEpubFile(file: File): Promise<ParsedEpubResult> {
+  const zip = await JSZip.loadAsync(file);
+  const parser = new DOMParser();
+
+  // 1. Achar arquivo .opf a partir do container.xml
+  let opfPath: string | null = null;
+  const containerXml = zip.file('META-INF/container.xml');
+  if (containerXml) {
+    try {
+      const xmlText = await containerXml.async('text');
+      const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
+      const rootfile = xmlDoc.querySelector('rootfile');
+      if (rootfile) {
+        opfPath = rootfile.getAttribute('full-path');
+      }
+    } catch (e) {
+      console.warn('Erro ao ler container.xml do epub:', e);
+    }
+  }
+
+  // 2. Buscar ordem dos arquivos pelo spine no .opf
+  const orderedHtmlPaths: string[] = [];
+  if (opfPath) {
+    const opfFile = zip.file(opfPath);
+    if (opfFile) {
+      try {
+        const opfText = await opfFile.async('text');
+        const opfDoc = parser.parseFromString(opfText, 'application/xml');
+        const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+
+        const manifestMap: Record<string, string> = {};
+        opfDoc.querySelectorAll('manifest > item').forEach((item) => {
+          const id = item.getAttribute('id');
+          const href = item.getAttribute('href');
+          if (id && href) {
+            manifestMap[id] = opfDir + href;
+          }
+        });
+
+        opfDoc.querySelectorAll('spine > itemref').forEach((itemref) => {
+          const idref = itemref.getAttribute('idref');
+          if (idref && manifestMap[idref]) {
+            orderedHtmlPaths.push(manifestMap[idref]);
+          }
+        });
+      } catch (e) {
+        console.warn('Erro ao processar spine do epub:', e);
+      }
+    }
+  }
+
+  // 3. Fallback se spine falhar: listar todos os arquivos xhtml/html
+  if (orderedHtmlPaths.length === 0) {
+    zip.forEach((relativePath) => {
+      const lower = relativePath.toLowerCase();
+      if ((lower.endsWith('.xhtml') || lower.endsWith('.html') || lower.endsWith('.htm')) && !lower.includes('toc') && !lower.includes('cover')) {
+        orderedHtmlPaths.push(relativePath);
+      }
+    });
+    orderedHtmlPaths.sort();
+  }
+
+  // 4. Ler cada arquivo HTML e extrair texto e capítulos
+  const allSentences: string[] = [];
+  const textChunks: string[] = [];
+  const chapters: { id: string; title: string; startIndex: number }[] = [];
+  let chapterIndex = 1;
+
+  for (const htmlPath of orderedHtmlPaths) {
+    const zipEntry = zip.file(htmlPath);
+    if (!zipEntry) continue;
+
+    try {
+      const rawHtml = await zipEntry.async('text');
+      const doc = parser.parseFromString(rawHtml, 'text/html');
+
+      doc.querySelectorAll('script, style, head, noscript, svg').forEach((el) => el.remove());
+
+      const hTag = doc.querySelector('h1, h2, h3, title');
+      const chapterTitle = hTag?.textContent?.trim() || `Capítulo ${chapterIndex}`;
+
+      const text = doc.body?.innerText || doc.body?.textContent || '';
+      const clean = text.replace(/\s+/g, ' ').trim();
+      if (!clean) continue;
+
+      const fileSentences = splitIntoSentences(clean);
+      if (fileSentences.length === 0) continue;
+
+      chapters.push({
+        id: `ch-${chapterIndex}`,
+        title: chapterTitle.length > 50 ? chapterTitle.slice(0, 50) + '...' : chapterTitle,
+        startIndex: allSentences.length,
+      });
+      chapterIndex++;
+
+      allSentences.push(...fileSentences);
+      textChunks.push(clean);
+    } catch (e) {
+      console.warn('Erro ao processar parte de epub:', htmlPath, e);
+    }
+  }
+
+  const fullText = textChunks.join('\n\n');
+  const totalWords = countWords(fullText);
+  const durationMinutes = estimateDurationMinutes(totalWords);
+
+  if (chapters.length === 0) {
+    chapters.push({
+      id: 'ch-1',
+      title: 'Início da Leitura',
+      startIndex: 0,
+    });
+  }
+
+  return {
+    fullText,
+    sentences: allSentences,
+    totalWords,
+    durationMinutes,
+    chapters,
   };
 }
 

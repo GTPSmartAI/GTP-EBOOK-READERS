@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { parsePdfFile, parseTextFile, createBookFromUpload } from '../services/pdfParser';
+import { parsePdfFile, parseEpubFile, parseTextFile, createBookFromUpload } from '../services/pdfParser';
 import { uploadBookReal, supabase } from '../services/supabase';
 import type { Book } from '../types';
 
@@ -77,7 +77,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         let durationMinutes = 1;
         let fileType: 'pdf' | 'epub' | 'txt' = 'txt';
 
-        if (fileName.endsWith('.pdf')) {
+        if (fileName.endsWith('.epub')) {
+          fileType = 'epub';
+          setUploadStatusText('Descompactando e extraindo capítulos do EPUB...');
+          const parsed = await parseEpubFile(selectedFile);
+          fullText = parsed.fullText;
+          sentences = parsed.sentences;
+          totalWords = parsed.totalWords;
+          durationMinutes = parsed.durationMinutes;
+        } else if (fileName.endsWith('.pdf')) {
           fileType = 'pdf';
           const parsed = await parsePdfFile(selectedFile);
           fullText = parsed.fullText;
@@ -94,7 +102,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         }
 
         if (sentences.length === 0 || totalWords === 0) {
-          throw new Error('Não foi possível extrair texto deste arquivo. Verifique se o PDF contém texto selecionável ou OCR.');
+          throw new Error('Não foi possível extrair texto deste arquivo. Verifique se o arquivo contém texto selecionável.');
         }
 
         createdBook = createBookFromUpload(

@@ -98,8 +98,18 @@ def create_app() -> Flask:
                 safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', file.filename)
                 storage_filename = f"uploads/{int(time.time())}_{safe_name}"
                 
+                fname_lower = file.filename.lower()
+                if fname_lower.endswith(".epub"):
+                    content_type = "application/epub+zip"
+                    doc_type = "epub"
+                elif fname_lower.endswith(".pdf"):
+                    content_type = "application/pdf"
+                    doc_type = "pdf"
+                else:
+                    content_type = "text/plain"
+                    doc_type = "txt"
+
                 with open(temp_path, "rb") as f_bytes:
-                    content_type = "application/pdf" if file.filename.lower().endswith(".pdf") else "text/plain"
                     admin.storage.from_("pdf-uploads").upload(
                         path=storage_filename,
                         file=f_bytes.read(),
@@ -116,7 +126,7 @@ def create_app() -> Flask:
                 "user_id": user_id,
                 "title": title,
                 "author": author,
-                "type": "pdf" if file.filename.lower().endswith(".pdf") else "txt",
+                "type": doc_type,
                 "content": full_text,
                 "sentences": sentences,
                 "chapters": chapters,

@@ -19,11 +19,16 @@ def count_words(text: str) -> int:
         return 0
     return len(re.findall(r'\b\w+\b', text))
 
+from epub_extractor import extract_text_from_epub
+
 def extract_text_from_pdf(file_path: str) -> Tuple[str, List[str], List[Dict[str, Any]], int, int]:
     """
-    Extrai texto de um arquivo PDF ou texto simples.
+    Extrai texto de um arquivo PDF, EPUB ou texto simples.
     Retorna (full_text, sentences, chapters, total_words, duration_minutes).
     """
+    if file_path.lower().endswith(".epub"):
+        return extract_text_from_epub(file_path)
+
     full_text = ""
     if file_path.lower().endswith(".txt"):
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -35,6 +40,14 @@ def extract_text_from_pdf(file_path: str) -> Tuple[str, List[str], List[Dict[str
                 page_str = page.extract_text() or ""
                 full_text += page_str + "\n\n"
         except Exception:
+            # Se falhou e for um zip disfarçado, tenta como epub
+            try:
+                import zipfile
+                if zipfile.is_zipfile(file_path):
+                    return extract_text_from_epub(file_path)
+            except Exception:
+                pass
+
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 full_text = f.read()
 
