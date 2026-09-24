@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { parsePdfFile, parseEpubFile, parseTextFile, createBookFromUpload } from '../services/pdfParser';
 import { uploadBookReal, supabase } from '../services/supabase';
+import { saveBookFull } from '../services/bookStorage';
 import type { Book } from '../types';
 
 interface UploadModalProps {
@@ -115,17 +116,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           durationMinutes
         );
 
-        // Salva na tabela do Supabase se userId presente
+        // Salva na tabela do Supabase se userId presente de forma segura (sem estourar cota do PostgREST)
         if (userId && createdBook) {
           try {
+            const safeSentences = createdBook.sentences.length > 250 ? createdBook.sentences.slice(0, 200) : createdBook.sentences;
+            const safeContent = createdBook.content.length > 50000 ? createdBook.content.slice(0, 50000) : createdBook.content;
+
             await supabase.from('books').upsert({
               id: createdBook.id,
               user_id: userId,
               title: createdBook.title,
               author: createdBook.author,
               type: createdBook.type,
-              content: createdBook.content,
-              sentences: createdBook.sentences,
+              content: safeContent,
+              sentences: safeSentences,
               chapters: createdBook.chapters,
               total_words: createdBook.totalWords,
               duration_minutes: createdBook.durationMinutes,
@@ -138,6 +142,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       }
 
       if (createdBook) {
+        // Salva imediatamente os dados completos no IndexedDB de alta capacidade
+        await saveBookFull(createdBook);
         onBookCreated(createdBook);
         onClose();
       }

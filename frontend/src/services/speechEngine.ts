@@ -1,12 +1,13 @@
 import type { VoiceOption } from '../types';
 
-export type PlaybackStatus = 'idle' | 'playing' | 'paused';
+export type PlaybackStatus = 'idle' | 'playing' | 'paused' | 'buffering';
 
 export interface SpeechEngineCallbacks {
   onSentenceChange: (index: number) => void;
   onStatusChange: (status: PlaybackStatus) => void;
   onComplete: () => void;
   onWaveformTick?: (energyLevels: number[]) => void;
+  onBufferProgress?: (isBuffering: boolean, progressText: string) => void;
 }
 
 const BACKEND_URL = 'http://localhost:4000';
@@ -14,6 +15,7 @@ const BACKEND_URL = 'http://localhost:4000';
 class SpeechEngine {
   private synth: SpeechSynthesis | null = null;
   private currentAudio: HTMLAudioElement | null = null;
+  private preloadedNextAudio: { index: number; audio: HTMLAudioElement } | null = null;
   private audioBuffer: Map<number, string> = new Map(); // index -> audio_url
   private isPrefetching: boolean = false;
   private sentences: string[] = [];
@@ -54,7 +56,13 @@ class SpeechEngine {
     this.stop();
     this.sentences = sentences;
     this.audioBuffer.clear();
+    this.preloadedNextAudio = null;
     this.currentIndex = Math.max(0, Math.min(startIndex, sentences.length - 1));
+
+    // Inicia pré-carregamento em background dos primeiros parágrafos/sentenças
+    if (sentences.length > 0) {
+      this.preloadInitialBuffer(this.currentIndex);
+    }
   }
 
   public setVoice(voice: VoiceOption) {
@@ -62,8 +70,11 @@ class SpeechEngine {
     this.voiceOption = voice;
     if (changed) {
       this.audioBuffer.clear();
+      this.preloadedNextAudio = null;
       if (this.status === 'playing') {
         this.speakCurrentSentence();
+      } else if (this.sentences.length > 0) {
+        this.preloadInitialBuffer(this.currentIndex);
       }
     }
   }
@@ -72,6 +83,9 @@ class SpeechEngine {
     this.rate = rate;
     if (this.currentAudio) {
       this.currentAudio.playbackRate = rate;
+    }
+    if (this.preloadedNextAudio) {
+      this.preloadedNextAudio.audio.playbackRate = rate;
     }
   }
 
@@ -82,6 +96,7 @@ class SpeechEngine {
   public setEmotion(emotion: string) {
     this.emotion = emotion;
     this.audioBuffer.clear();
+    this.preloadedNextAudio = null;
   }
 
   public getCurrentIndex(): number {
@@ -92,11 +107,66 @@ class SpeechEngine {
     return this.status;
   }
 
-  public play(index?: number) {
+  /**
+   * Pré-monta os primeiros parágrafos (buffer inicial) com suspense e pausas
+   */
+  public async preloadInitialBuffer(fromIndex: number = 0, targetCount: number = 10): Promise<boolean> {
+    if (this.isPrefetching || this.sentences.length === 0) return false;
+
+    const toFetch: string[] = [];
+    const maxItems = Math.min(this.sentences.length, fromIndex + targetCount);
+
+    for (let i = fromIndex; i < maxItems; i++) {
+      if (!this.audioBuffer.has(i)) {
+        toFetch.push(this.sentences[i]);
+      }
+    }
+
+    if (toFetch.length === 0) return true;
+
+    this.isPrefetching = true;
+    this.callbacks.onBufferProgress?.(true, `Preparando os primeiros ${toFetch.length} parágrafos com entonação...`);
+
+    try {
+      const voiceId = this.voiceOption?.id || 'francisca-dramatica';
+      const res = await fetch(`${BACKEND_URL}/api/tts/prefetch-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sentences: toFetch,
+          voice_id: voiceId,
+          emotion: this.emotion,
+          rate: this.rate,
+          start_index: fromIndex,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.items)) {
+          for (const item of data.items) {
+            this.audioBuffer.set(item.index, `${BACKEND_URL}${item.audio_url}`);
+          }
+          // Já deixa o próximo elemento pré-instanciado
+          this.primeNextAudioElement(fromIndex + 1);
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('[Buffer] Falha no buffer inicial de áudio:', e);
+    } finally {
+      this.isPrefetching = false;
+      this.callbacks.onBufferProgress?.(false, 'Pronto para leitura');
+    }
+    return false;
+  }
+
+  public async play(index?: number) {
     if (this.sentences.length === 0) return;
 
     if (index !== undefined) {
       this.currentIndex = Math.max(0, Math.min(index, this.sentences.length - 1));
+      this.preloadedNextAudio = null;
     }
 
     if (this.status === 'paused' && this.currentAudio) {
@@ -104,6 +174,14 @@ class SpeechEngine {
       this.setStatus('playing');
       this.startWaveformSimulation();
       return;
+    }
+
+    // Se o áudio atual não estiver no buffer, mostra estado de processando/preparando
+    if (!this.audioBuffer.has(this.currentIndex)) {
+      this.setStatus('buffering');
+      this.callbacks.onBufferProgress?.(true, '⚡ Processando narrativa com suspense e pontuação...');
+      await this.preloadInitialBuffer(this.currentIndex, 8);
+      this.callbacks.onBufferProgress?.(false, '');
     }
 
     this.speakCurrentSentence();
@@ -281,12 +359,39 @@ class SpeechEngine {
     this.speakNative(text, currentIdx);
   }
 
+  private primeNextAudioElement(nextIndex: number) {
+    if (nextIndex >= this.sentences.length) return;
+    const nextUrl = this.audioBuffer.get(nextIndex);
+    if (nextUrl) {
+      try {
+        const nextAudio = new Audio(nextUrl);
+        nextAudio.preload = 'auto';
+        nextAudio.playbackRate = this.rate;
+        this.preloadedNextAudio = { index: nextIndex, audio: nextAudio };
+      } catch (e) {
+        // ignora
+      }
+    }
+  }
+
   private playHtmlAudio(url: string, index: number) {
     if (this.currentIndex !== index || this.status !== 'playing') return;
 
-    const audio = new Audio(url);
+    let audio: HTMLAudioElement;
+
+    // Se já estiver pré-carregado em memória, utiliza a instância pronta (gapless, 0ms latency)
+    if (this.preloadedNextAudio && this.preloadedNextAudio.index === index) {
+      audio = this.preloadedNextAudio.audio;
+      this.preloadedNextAudio = null;
+    } else {
+      audio = new Audio(url);
+    }
+
     audio.playbackRate = this.rate;
     this.currentAudio = audio;
+
+    // Imediatamente pré-instancia o próximo áudio para transição contínua
+    this.primeNextAudioElement(index + 1);
 
     audio.onended = () => {
       if (this.status === 'playing' && this.currentIndex === index) {

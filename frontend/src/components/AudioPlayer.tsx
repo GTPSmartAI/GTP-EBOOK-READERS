@@ -28,8 +28,6 @@ interface AudioPlayerProps {
   onOpenVoicePicker: () => void;
 }
 
-const SPEED_OPTIONS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   currentBook,
   currentSentenceIndex,
@@ -296,38 +294,151 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 position: 'absolute',
                 bottom: '100%',
                 right: 0,
-                marginBottom: '8px',
-                background: 'var(--bg-surface-elevated)',
-                border: '1px solid var(--border-strong)',
-                borderRadius: 'var(--radius-md)',
-                boxShadow: 'var(--shadow-lg)',
-                padding: '4px',
+                marginBottom: '12px',
+                background: 'rgba(15, 23, 42, 0.96)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                border: '1px solid rgba(30, 41, 59, 0.9)',
+                borderRadius: '1.25rem',
+                boxShadow: '0 20px 35px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(16, 185, 129, 0.15)',
+                padding: '16px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '2px',
-                minWidth: '80px',
-                zIndex: 60,
+                gap: '12px',
+                width: '270px',
+                zIndex: 70,
               }}>
-                {SPEED_OPTIONS.map((opt) => (
+                {/* Header com Valor Atual */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                    color: '#94a3b8',
+                  }}>
+                    Velocidade
+                  </span>
+                  <span style={{
+                    fontSize: '15px',
+                    fontWeight: 900,
+                    color: '#10b981',
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    letterSpacing: '-0.02em',
+                  }}>
+                    {Number(speed).toFixed(1)}x
+                  </span>
+                </div>
+
+                {/* Slider Arrastável de 0.5x até 4.0x com botões de ajuste fino */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button
-                    key={opt}
-                    onClick={() => {
-                      onChangeSpeed(opt);
-                      setShowSpeedMenu(false);
-                    }}
+                    onClick={() => onChangeSpeed(Math.max(0.5, Number((speed - 0.1).toFixed(1))))}
                     style={{
-                      padding: '5px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      textAlign: 'left',
-                      background: speed === opt ? 'var(--accent-primary)' : 'transparent',
-                      color: speed === opt ? '#fff' : 'var(--text-primary)',
-                      fontWeight: speed === opt ? 600 : 400,
+                      width: '26px',
+                      height: '26px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#f1f5f9',
+                      fontWeight: 700,
+                      fontSize: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
                     }}
+                    title="Diminuir 0.1x"
                   >
-                    {opt}x
+                    -
                   </button>
-                ))}
+
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={4.0}
+                      step={0.1}
+                      value={speed}
+                      onChange={(e) => onChangeSpeed(parseFloat(e.target.value))}
+                      style={{
+                        width: '100%',
+                        height: '6px',
+                        borderRadius: '3px',
+                        accentColor: '#10b981',
+                        cursor: 'pointer',
+                        outline: 'none',
+                      }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#64748b', fontWeight: 600 }}>
+                      <span>0.5x</span>
+                      <span>1.0x</span>
+                      <span>2.0x</span>
+                      <span>4.0x</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => onChangeSpeed(Math.min(4.0, Number((speed + 0.1).toFixed(1))))}
+                    style={{
+                      width: '26px',
+                      height: '26px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#f1f5f9',
+                      fontWeight: 700,
+                      fontSize: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                    title="Aumentar 0.1x"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* Divisor */}
+                <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.07)' }} />
+
+                {/* Padrões de Clique Rápido */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                    Padrões Rápidos
+                  </span>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '4px',
+                  }}>
+                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0].map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => {
+                          onChangeSpeed(opt);
+                        }}
+                        style={{
+                          padding: '6px 0',
+                          borderRadius: '8px',
+                          fontSize: '11px',
+                          textAlign: 'center',
+                          background: Number(speed).toFixed(2) === opt.toFixed(2) || (speed === opt) ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
+                          color: Number(speed).toFixed(2) === opt.toFixed(2) || (speed === opt) ? '#ffffff' : '#cbd5e1',
+                          fontWeight: (speed === opt) ? 800 : 500,
+                          border: (speed === opt) ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.06)',
+                          cursor: 'pointer',
+                          transition: 'all 150ms',
+                        }}
+                      >
+                        {opt}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

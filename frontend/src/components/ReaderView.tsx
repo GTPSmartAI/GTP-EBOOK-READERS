@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { Book, ReaderSettings } from '../types';
 import { Play, Sparkles, BookOpen, Clock, CheckCircle } from 'lucide-react';
 
@@ -20,16 +20,59 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   onPlayChapter,
 }) => {
   const activeSentenceRef = useRef<HTMLSpanElement | null>(null);
+  const [isDetachedFromVoice, setIsDetachedFromVoice] = useState(false);
+  const detachTimeoutRef = useRef<any>(null);
 
-  // Auto-scroll to active sentence when enabled
+  // Detecta quando o usuário rola manualmente para não forçar o scroll da IA
+  const handleUserScroll = useCallback(() => {
+    setIsDetachedFromVoice(true);
+    if (detachTimeoutRef.current) {
+      clearTimeout(detachTimeoutRef.current);
+    }
+    // Após 12 segundos sem rolar, permite resincronização suave
+    detachTimeoutRef.current = setTimeout(() => {
+      setIsDetachedFromVoice(false);
+    }, 12000);
+  }, []);
+
   useEffect(() => {
-    if (settings.autoScroll && activeSentenceRef.current) {
+    window.addEventListener('wheel', handleUserScroll, { passive: true });
+    window.addEventListener('touchmove', handleUserScroll, { passive: true });
+    return () => {
+      window.removeEventListener('wheel', handleUserScroll);
+      window.removeEventListener('touchmove', handleUserScroll);
+      if (detachTimeoutRef.current) clearTimeout(detachTimeoutRef.current);
+    };
+  }, [handleUserScroll]);
+
+  // Sincroniza e centraliza na frase que a IA está lendo
+  const handleSyncWithVoice = () => {
+    setIsDetachedFromVoice(false);
+    if (activeSentenceRef.current) {
       activeSentenceRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
     }
-  }, [currentSentenceIndex, settings.autoScroll]);
+  };
+
+  // Auto-scroll para sentença ativa apenas se o usuário não estiver rolando livremente
+  useEffect(() => {
+    if (!settings.autoScroll || isDetachedFromVoice || !activeSentenceRef.current) {
+      return;
+    }
+
+    const rect = activeSentenceRef.current.getBoundingClientRect();
+    const isVisibleInViewport = rect.top >= 100 && rect.bottom <= window.innerHeight - 140;
+
+    // Se já estiver visível na janela, não força solavanco
+    if (!isVisibleInViewport) {
+      activeSentenceRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [currentSentenceIndex, settings.autoScroll, isDetachedFromVoice]);
 
   // Width mapping
   const maxWidthMap = {
@@ -330,6 +373,38 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
             Você concluiu a leitura de <strong>{book.title}</strong>! Você pode navegar pela sua biblioteca para iniciar outro livro.
           </p>
         </div>
+
+        {/* Floating Sync Button quando o usuário rolou manualmente */}
+        {isDetachedFromVoice && (
+          <button
+            onClick={handleSyncWithVoice}
+            style={{
+              position: 'fixed',
+              bottom: '95px',
+              right: '28px',
+              zIndex: 60,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              borderRadius: '9999px',
+              background: '#10b981',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              boxShadow: '0 10px 25px -3px rgba(16, 185, 129, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.2)',
+              fontSize: '11px',
+              fontWeight: 900,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              cursor: 'pointer',
+              transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+            title="Voltar o foco para onde a voz está lendo agora"
+          >
+            <Sparkles size={14} />
+            <span>Sincronizar com a Voz</span>
+          </button>
+        )}
       </div>
     </main>
   );

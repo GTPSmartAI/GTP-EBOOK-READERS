@@ -362,10 +362,10 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
         }}>
           <div>
             <span style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
-              Rolagem Automática (Auto-Scroll)
+              Rolagem Automática (Auto-Scroll Inteligente)
             </span>
             <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-              Desliza a página suavemente acompanhando a frase que o narrador está falando.
+              Acompanha a voz sem bloquear a rolagem livre manual da página.
             </p>
           </div>
 
@@ -391,6 +391,127 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
               transition: 'left 200ms',
             }} />
           </button>
+        </div>
+
+        {/* Velocidade de Leitura Arrastável de 0.5x até 4.0x */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          paddingTop: '16px',
+          borderTop: '1px solid var(--border-subtle)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
+                Velocidade da Narração (0.5x até 4.0x)
+              </span>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                Arraste o botão para ajustar o ritmo exato da voz ou clique nos padrões.
+              </p>
+            </div>
+            <span style={{
+              fontSize: '15px',
+              fontWeight: 900,
+              color: '#10b981',
+              background: 'rgba(16, 185, 129, 0.12)',
+              padding: '4px 12px',
+              borderRadius: '8px',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+            }}>
+              {Number(settings.speechRate).toFixed(1)}x
+            </span>
+          </div>
+
+          {/* Slider Arrastável */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={() => onUpdateSettings({ speechRate: Math.max(0.5, Number((settings.speechRate - 0.1).toFixed(1))) })}
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#f1f5f9',
+                fontWeight: 700,
+                fontSize: '16px',
+                cursor: 'pointer',
+              }}
+            >
+              -
+            </button>
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <input
+                type="range"
+                min={0.5}
+                max={4.0}
+                step={0.1}
+                value={settings.speechRate}
+                onChange={(e) => onUpdateSettings({ speechRate: parseFloat(e.target.value) })}
+                style={{
+                  width: '100%',
+                  height: '8px',
+                  borderRadius: '4px',
+                  accentColor: '#10b981',
+                  cursor: 'pointer',
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+                <span>0.5x (Super Lento)</span>
+                <span>1.0x (Padrão)</span>
+                <span>2.0x (Rápido)</span>
+                <span>4.0x (Máximo)</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onUpdateSettings({ speechRate: Math.min(4.0, Number((settings.speechRate + 0.1).toFixed(1))) })}
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#f1f5f9',
+                fontWeight: 700,
+                fontSize: '16px',
+                cursor: 'pointer',
+              }}
+            >
+              +
+            </button>
+          </div>
+
+          {/* Atalhos Rápidos */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+            gap: '6px',
+            marginTop: '4px',
+          }}>
+            {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0].map((opt) => (
+              <button
+                key={opt}
+                onClick={() => onUpdateSettings({ speechRate: opt })}
+                style={{
+                  padding: '8px 0',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  textAlign: 'center',
+                  background: Number(settings.speechRate).toFixed(2) === opt.toFixed(2) ? '#10b981' : 'var(--bg-surface-elevated)',
+                  color: Number(settings.speechRate).toFixed(2) === opt.toFixed(2) ? '#ffffff' : '#cbd5e1',
+                  fontWeight: Number(settings.speechRate).toFixed(2) === opt.toFixed(2) ? 800 : 600,
+                  border: Number(settings.speechRate).toFixed(2) === opt.toFixed(2) ? '1px solid #10b981' : '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                  transition: 'all 150ms',
+                }}
+              >
+                {opt}x
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

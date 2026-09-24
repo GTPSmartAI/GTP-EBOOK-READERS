@@ -5,6 +5,12 @@ import { speechEngine } from './services/speechEngine';
 import type { PlaybackStatus } from './services/speechEngine';
 import { supabase, fetchUserProfile, fetchCloudBooks, deleteBookReal } from './services/supabase';
 import type { UserProfile } from './services/supabase';
+import { 
+  saveBookFull, 
+  getBookFull, 
+  saveBooksMetadataSafe, 
+  loadInitialBooks 
+} from './services/bookStorage';
 
 // Pages
 import { Login } from './pages/Login';
@@ -88,6 +94,7 @@ export const App: React.FC = () => {
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState<number>(0);
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
   const [waveformLevels, setWaveformLevels] = useState<number[]>(Array(16).fill(15));
+  const [bufferingMessage, setBufferingMessage] = useState<string>('');
 
   // Voice state & Favorites
   const [favoriteVoiceIds, setFavoriteVoiceIds] = useState<string[]>(() => {
@@ -191,17 +198,35 @@ export const App: React.FC = () => {
     localStorage.setItem('gtp_reader_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Persist books to localStorage
+  // Persist books to IndexedDB e metadados leves ao localStorage (suporta de 1MB a 50MB+)
   useEffect(() => {
-    localStorage.setItem('gtp_reader_books', JSON.stringify(books));
+    saveBooksMetadataSafe(books);
+    books.forEach((b) => {
+      if (b.sentences && b.sentences.length > 0) {
+        saveBookFull(b);
+      }
+    });
   }, [books]);
+
+  // Carrega livros persistidos em IndexedDB ao inicializar
+  useEffect(() => {
+    loadInitialBooks().then((initBooks) => {
+      if (initBooks && initBooks.length > 0) {
+        setBooks((prev) => {
+          const ids = new Set(prev.map((p) => p.id));
+          const toAdd = initBooks.filter((b) => !ids.has(b.id));
+          return [...prev, ...toAdd];
+        });
+      }
+    });
+  }, []);
 
   // Persist favorites
   useEffect(() => {
     localStorage.setItem('gtp_favorite_voices', JSON.stringify(favoriteVoiceIds));
   }, [favoriteVoiceIds]);
 
-  // Connect speech engine callbacks
+  // Connect speech engine callbacks (incluindo status de buffer de 10 parágrafos)
   useEffect(() => {
     speechEngine.setCallbacks({
       onSentenceChange: (idx) => {
@@ -221,20 +246,69 @@ export const App: React.FC = () => {
       onStatusChange: (status) => setPlaybackStatus(status),
       onComplete: () => setPlaybackStatus('idle'),
       onWaveformTick: (levels) => setWaveformLevels(levels),
+      onBufferProgress: (isBuffering, progressText) => {
+        setBufferingMessage(isBuffering ? progressText : '');
+      },
     });
   }, [currentBook?.id]);
 
-  // When current book changes, load sentences into speech engine
+  // When current book changes, load sentences into speech engine (com carregamento assíncrono se necessário)
   useEffect(() => {
     if (!currentBook) {
       setCurrentSentenceIndex(0);
       speechEngine.setSentences([], 0);
       return;
     }
-    setCurrentSentenceIndex(currentBook.lastReadSentenceIndex || 0);
-    speechEngine.setSentences(currentBook.sentences, currentBook.lastReadSentenceIndex || 0);
-    speechEngine.setVoice(selectedVoice);
-    speechEngine.setRate(settings.speechRate);
+
+    // Se o livro já tem sentenças em memória
+    if (currentBook.sentences && currentBook.sentences.length > 0) {
+      setCurrentSentenceIndex(currentBook.lastReadSentenceIndex || 0);
+      speechEngine.setSentences(currentBook.sentences, currentBook.lastReadSentenceIndex || 0);
+      speechEngine.setVoice(selectedVoice);
+      speechEngine.setRate(settings.speechRate);
+      return;
+    }
+
+    // Caso contrário (livro grande recuperado de metadados), busca dados completos do IndexedDB ou backend
+    let isCurrent = true;
+    getBookFull(currentBook.id).then(async (fullBook) => {
+      if (!isCurrent) return;
+
+      if (fullBook && fullBook.sentences && fullBook.sentences.length > 0) {
+        setBooks((prev) => prev.map((b) => (b.id === fullBook.id ? fullBook : b)));
+        setCurrentSentenceIndex(fullBook.lastReadSentenceIndex || 0);
+        speechEngine.setSentences(fullBook.sentences, fullBook.lastReadSentenceIndex || 0);
+        speechEngine.setVoice(selectedVoice);
+        speechEngine.setRate(settings.speechRate);
+      } else {
+        // Tenta buscar da API do backend
+        try {
+          const res = await fetch(`http://localhost:4000/api/books/${currentBook.id}/content`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.book && data.book.sentences && isCurrent) {
+              const enriched: Book = {
+                ...currentBook,
+                sentences: data.book.sentences,
+                content: data.book.content || currentBook.content,
+                chapters: data.book.chapters || currentBook.chapters,
+              };
+              saveBookFull(enriched);
+              setBooks((prev) => prev.map((b) => (b.id === enriched.id ? enriched : b)));
+              speechEngine.setSentences(enriched.sentences, enriched.lastReadSentenceIndex || 0);
+              speechEngine.setVoice(selectedVoice);
+              speechEngine.setRate(settings.speechRate);
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('Falha ao buscar dados completos do livro no backend:', fetchErr);
+        }
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [currentBook?.id]);
 
   // Audio Handlers
@@ -423,6 +497,40 @@ export const App: React.FC = () => {
           onOpenSubscription={() => setIsSubscriptionOpen(true)}
           onSignOut={handleSignOut}
         />
+      )}
+
+      {/* Indicador Flutuante de Processamento / Buffer Inicial com Suspense */}
+      {(bufferingMessage || playbackStatus === 'buffering') && (
+        <div style={{
+          position: 'fixed',
+          top: '75px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 80,
+          background: 'rgba(15, 23, 42, 0.95)',
+          backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(16, 185, 129, 0.4)',
+          borderRadius: '9999px',
+          padding: '8px 22px',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          color: '#ffffff',
+          fontSize: '12px',
+          fontWeight: 700,
+          letterSpacing: '0.02em',
+        }}>
+          <span style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: '#10b981',
+            boxShadow: '0 0 10px #10b981',
+          }} />
+          <span>{bufferingMessage || '⚡ Preparando leitura neural com suspense & pontuação...'}</span>
+        </div>
       )}
 
       {/* Bottom Floating Audio Player Dock (exibido apenas se houver livro e conteúdo) */}

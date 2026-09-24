@@ -37,6 +37,7 @@ def create_app() -> Flask:
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     settings = get_settings()
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB limite para PDFs e EPUBs pesados
 
     # 1. Health check
     @app.route("/api/health", methods=["GET"])
@@ -121,9 +122,15 @@ def create_app() -> Flask:
                 print(f"[Storage Warning] Falha ao enviar para Supabase Storage: {st_err}")
 
             book_id = f"book-{int(time.time() * 1000)}"
-            book_data = {
+            
+            # Diretório para armazenamento local/cache de livros extraídos de alta capacidade
+            extracted_dir = settings.UPLOAD_DIR / "extracted"
+            extracted_dir.mkdir(parents=True, exist_ok=True)
+            extracted_file = extracted_dir / f"{book_id}.json"
+            
+            import json
+            full_data_payload = {
                 "id": book_id,
-                "user_id": user_id,
                 "title": title,
                 "author": author,
                 "type": doc_type,
@@ -136,13 +143,49 @@ def create_app() -> Flask:
                 "file_url": storage_url
             }
 
+            with open(extracted_file, "w", encoding="utf-8") as ef:
+                json.dump(full_data_payload, ef, ensure_ascii=False)
+
+            # Também salva no bucket do Supabase Storage como JSON de leitura para persistência global
+            extracted_storage_url = None
+            try:
+                admin = get_supabase_admin()
+                admin.storage.from_("pdf-uploads").upload(
+                    path=f"extracted/{book_id}.json",
+                    file=json.dumps(full_data_payload, ensure_ascii=False).encode("utf-8"),
+                    file_options={"content-type": "application/json", "upsert": "true"}
+                )
+                extracted_storage_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/pdf-uploads/extracted/{book_id}.json"
+            except Exception as ex_st_err:
+                print(f"[Storage Extracted Warning] Salvo localmente, storage opcional: {ex_st_err}")
+
+            # Para a tabela do banco, se for muito grande (>300 sentenças), reduz para preview seguro para não estourar o limite de 1-2MB do PostgREST
+            safe_sentences = sentences if len(sentences) <= 300 else sentences[:200]
+            safe_content = full_text if len(full_text) <= 50000 else full_text[:50000]
+
+            db_book_data = {
+                "id": book_id,
+                "user_id": user_id,
+                "title": title,
+                "author": author,
+                "type": doc_type,
+                "content": safe_content,
+                "sentences": safe_sentences,
+                "chapters": chapters,
+                "total_words": total_words,
+                "duration_minutes": duration_minutes,
+                "cover_gradient": "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                "file_url": storage_url
+            }
+
             if user_id:
-                save_book(book_data)
+                save_book(db_book_data)
 
             return jsonify({
                 "success": True,
-                "book": book_data,
-                "storage_url": storage_url
+                "book": full_data_payload,
+                "storage_url": storage_url,
+                "extracted_data_url": extracted_storage_url
             })
         finally:
             if temp_path.exists():
@@ -181,7 +224,39 @@ def create_app() -> Flask:
                     print(f"Erro ao remover arquivo do storage: {rem_err}")
 
             admin.from_('books').delete().eq('id', book_id).execute()
+
+            # Remove arquivo extraído local se existir
+            local_extracted = settings.UPLOAD_DIR / "extracted" / f"{book_id}.json"
+            if local_extracted.exists():
+                try:
+                    os.remove(str(local_extracted))
+                except Exception:
+                    pass
+
             return jsonify({"success": True, "message": "Livro removido"})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # 5.2 Conteúdo Completo de Livros Grandes
+    @app.route("/api/books/<book_id>/content", methods=["GET"])
+    def get_book_full_content(book_id):
+        # 1. Verifica cache local
+        local_extracted = settings.UPLOAD_DIR / "extracted" / f"{book_id}.json"
+        if local_extracted.exists():
+            import json
+            try:
+                with open(local_extracted, "r", encoding="utf-8") as f:
+                    return jsonify({"success": True, "book": json.load(f)})
+            except Exception as e:
+                print(f"Erro ao ler cache local de {book_id}: {e}")
+
+        # 2. Verifica banco do Supabase
+        admin = get_supabase_admin()
+        try:
+            res = admin.from_('books').select('*').eq('id', book_id).maybe_single().execute()
+            if res and res.data:
+                return jsonify({"success": True, "book": res.data})
+            return jsonify({"error": "Livro não encontrado"}), 404
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
@@ -235,24 +310,39 @@ def create_app() -> Flask:
         if not sentences:
             return jsonify({"error": "Nenhuma sentença informada"}), 400
 
-        # Limita o lote em até 40 sentenças por requisição (equivalente a 3-4 páginas)
-        batch = sentences[:40]
+        # Limita o lote em até 20 sentenças/parágrafos por requisição
+        batch = sentences[:20]
         results = []
 
-        for i, sentence in enumerate(batch):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _synthesize_worker(task):
+            i, sentence = task
             idx = start_index + i
-            audio_file = generate_speech_file(
-                text=sentence,
-                voice_id=voice_id,
-                emotion=emotion,
-                rate_multiplier=rate
-            )
-            if audio_file:
-                results.append({
-                    "index": idx,
-                    "sentence": sentence,
-                    "audio_url": f"/api/audio/{audio_file}"
-                })
+            try:
+                audio_file = generate_speech_file(
+                    text=sentence,
+                    voice_id=voice_id,
+                    emotion=emotion,
+                    rate_multiplier=rate
+                )
+                if audio_file:
+                    return {
+                        "index": idx,
+                        "sentence": sentence,
+                        "audio_url": f"/api/audio/{audio_file}"
+                    }
+            except Exception as e:
+                print(f"[TTS Parallel Worker] Erro no item {idx}: {e}")
+            return None
+
+        tasks = list(enumerate(batch))
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            task_results = list(executor.map(_synthesize_worker, tasks))
+
+        for r in task_results:
+            if r is not None:
+                results.append(r)
 
         return jsonify({
             "success": True,
