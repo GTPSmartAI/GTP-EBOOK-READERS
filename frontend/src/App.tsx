@@ -443,61 +443,63 @@ export const App: React.FC = () => {
       />
 
       {/* Pages Viewport */}
-      {activePage === 'painel' && (
-        <Painel
-          books={books}
-          currentBook={currentBook!}
-          favoriteVoiceIds={favoriteVoiceIds}
-          allVoices={ELEVEN_VOICES}
-          onOpenBookInReader={handleOpenBookInReader}
-          onOpenUpload={() => setIsUploadOpen(true)}
-          onNavigateToVoices={() => setActivePage('vozes')}
-          onToggleFavoriteVoice={handleToggleFavoriteVoice}
-          onPreviewVoice={handlePreviewVoice}
-          onDeleteBook={handleDeleteBook}
-          userName={user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário'}
-        />
-      )}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+        {activePage === 'painel' && (
+          <Painel
+            books={books}
+            currentBook={currentBook!}
+            favoriteVoiceIds={favoriteVoiceIds}
+            allVoices={ELEVEN_VOICES}
+            onOpenBookInReader={handleOpenBookInReader}
+            onOpenUpload={() => setIsUploadOpen(true)}
+            onNavigateToVoices={() => setActivePage('vozes')}
+            onToggleFavoriteVoice={handleToggleFavoriteVoice}
+            onPreviewVoice={handlePreviewVoice}
+            onDeleteBook={handleDeleteBook}
+            userName={user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário'}
+          />
+        )}
 
-      {activePage === 'leitor' && (
-        <Leitor
-          book={currentBook}
-          currentSentenceIndex={currentSentenceIndex}
-          settings={settings}
-          onSentenceClick={handleSentenceClick}
-          onPlayChapter={handlePlayChapter}
-          onOpenChapters={() => setIsChaptersOpen(true)}
-          onOpenAIChat={() => setIsAIChatOpen(true)}
-          onBackToPainel={() => setActivePage('painel')}
-          onOpenUpload={() => setIsUploadOpen(true)}
-        />
-      )}
+        {activePage === 'leitor' && (
+          <Leitor
+            book={currentBook}
+            currentSentenceIndex={currentSentenceIndex}
+            settings={settings}
+            onSentenceClick={handleSentenceClick}
+            onPlayChapter={handlePlayChapter}
+            onOpenChapters={() => setIsChaptersOpen(true)}
+            onOpenAIChat={() => setIsAIChatOpen(true)}
+            onBackToPainel={() => setActivePage('painel')}
+            onOpenUpload={() => setIsUploadOpen(true)}
+          />
+        )}
 
-      {activePage === 'vozes' && (
-        <Vozes
-          voices={ELEVEN_VOICES}
-          selectedVoice={selectedVoice}
-          favoriteVoiceIds={favoriteVoiceIds}
-          onSelectVoice={handleSelectVoice}
-          onToggleFavoriteVoice={handleToggleFavoriteVoice}
-          onPreviewVoice={handlePreviewVoice}
-          onVoiceCloned={(cloned) => {
-            setSelectedVoice(cloned);
-          }}
-          isProUser={userProfile?.subscription_tier === 'pro' || userProfile?.subscription_tier === 'unlimited'}
-        />
-      )}
+        {activePage === 'vozes' && (
+          <Vozes
+            voices={ELEVEN_VOICES}
+            selectedVoice={selectedVoice}
+            favoriteVoiceIds={favoriteVoiceIds}
+            onSelectVoice={handleSelectVoice}
+            onToggleFavoriteVoice={handleToggleFavoriteVoice}
+            onPreviewVoice={handlePreviewVoice}
+            onVoiceCloned={(cloned) => {
+              setSelectedVoice(cloned);
+            }}
+            isProUser={userProfile?.subscription_tier === 'pro' || userProfile?.subscription_tier === 'unlimited'}
+          />
+        )}
 
-      {activePage === 'configuracoes' && (
-        <Configuracoes
-          settings={settings}
-          onUpdateSettings={(newSettings) => setSettings((prev) => ({ ...prev, ...newSettings }))}
-          user={user}
-          userProfile={userProfile}
-          onOpenSubscription={() => setIsSubscriptionOpen(true)}
-          onSignOut={handleSignOut}
-        />
-      )}
+        {activePage === 'configuracoes' && (
+          <Configuracoes
+            settings={settings}
+            onUpdateSettings={(newSettings) => setSettings((prev) => ({ ...prev, ...newSettings }))}
+            user={user}
+            userProfile={userProfile}
+            onOpenSubscription={() => setIsSubscriptionOpen(true)}
+            onSignOut={handleSignOut}
+          />
+        )}
+      </div>
 
       {/* Indicador Flutuante de Processamento / Buffer Inicial com Suspense */}
       {(bufferingMessage || playbackStatus === 'buffering') && (

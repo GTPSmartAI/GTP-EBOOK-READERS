@@ -119,10 +119,20 @@ export const Leitor: React.FC<LeitorPageProps> = ({
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <div style={{
+      flex: 1,
+      height: 'calc(100vh - 60px)',
+      maxHeight: 'calc(100vh - 60px)',
+      minHeight: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
       {/* Sub-header de Ações do Leitor */}
       <div style={{
         height: '48px',
+        minHeight: '48px',
         background: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
@@ -234,7 +244,14 @@ export const Leitor: React.FC<LeitorPageProps> = ({
       </div>
 
       {/* Viewport Principal com Barra Lateral Esquerda de Capítulos */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        minHeight: 0,
+        height: 'calc(100% - 48px)',
+        overflow: 'hidden',
+        position: 'relative',
+      }}>
         {/* Barra Lateral de Capítulos (Colapsável) */}
         <aside style={{
           width: isSidebarOpen ? '280px' : '0px',
@@ -401,7 +418,14 @@ export const Leitor: React.FC<LeitorPageProps> = ({
         )}
 
         {/* Leitor Principal Fluido */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          height: '100%',
+          overflow: 'hidden',
+        }}>
           <ReaderView
             book={book}
             currentSentenceIndex={currentSentenceIndex}

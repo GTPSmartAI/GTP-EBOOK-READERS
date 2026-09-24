@@ -20,6 +20,7 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   onPlayChapter,
 }) => {
   const activeSentenceRef = useRef<HTMLSpanElement | null>(null);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
   const [isDetachedFromVoice, setIsDetachedFromVoice] = useState(false);
   const detachTimeoutRef = useRef<any>(null);
 
@@ -36,9 +37,20 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
   }, []);
 
   useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleUserScroll, { passive: true });
+      container.addEventListener('touchmove', handleUserScroll, { passive: true });
+      container.addEventListener('scroll', handleUserScroll, { passive: true });
+    }
     window.addEventListener('wheel', handleUserScroll, { passive: true });
     window.addEventListener('touchmove', handleUserScroll, { passive: true });
     return () => {
+      if (container) {
+        container.removeEventListener('wheel', handleUserScroll);
+        container.removeEventListener('touchmove', handleUserScroll);
+        container.removeEventListener('scroll', handleUserScroll);
+      }
       window.removeEventListener('wheel', handleUserScroll);
       window.removeEventListener('touchmove', handleUserScroll);
       if (detachTimeoutRef.current) clearTimeout(detachTimeoutRef.current);
@@ -206,10 +218,17 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
 
   return (
     <main
+      ref={scrollContainerRef}
+      id="reader-scroll-container"
       style={{
         flex: 1,
+        width: '100%',
+        height: '100%',
+        minHeight: 0,
         overflowY: 'auto',
-        padding: '36px 20px 140px 20px', // Extra bottom space for floating dock
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        padding: '36px 20px 180px 20px', // Extra bottom space for floating dock
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
