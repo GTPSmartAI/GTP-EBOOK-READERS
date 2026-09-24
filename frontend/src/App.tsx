@@ -559,6 +559,7 @@ export const App: React.FC = () => {
         onClose={() => setIsVoicePickerOpen(false)}
         selectedVoice={selectedVoice}
         onSelectVoice={handleSelectVoice}
+        onNavigateToCloner={() => setActivePage('vozes')}
       />
 
       <SettingsModal

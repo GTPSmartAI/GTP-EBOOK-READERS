@@ -293,69 +293,34 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               <div style={{
                 position: 'absolute',
                 bottom: '100%',
-                right: 0,
-                marginBottom: '12px',
-                background: 'rgba(15, 23, 42, 0.96)',
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
-                border: '1px solid rgba(30, 41, 59, 0.9)',
-                borderRadius: '1.25rem',
-                boxShadow: '0 20px 35px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(16, 185, 129, 0.15)',
-                padding: '16px',
+                right: '50%',
+                transform: 'translateX(50%)',
+                marginBottom: '14px',
+                background: 'rgba(9, 13, 22, 0.98)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '16px',
+                boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(16, 185, 129, 0.2)',
+                padding: '12px 16px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '12px',
-                width: '270px',
-                zIndex: 70,
+                gap: '10px',
+                width: '310px',
+                zIndex: 80,
               }}>
-                {/* Header com Valor Atual */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {/* Linha Principal Minimalista: Reading speed ───⚪─── [2] */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{
-                    fontSize: '10px',
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.1em',
+                    fontSize: '11px',
+                    fontWeight: 600,
                     color: '#94a3b8',
+                    whiteSpace: 'nowrap',
                   }}>
-                    Velocidade
+                    Reading speed
                   </span>
-                  <span style={{
-                    fontSize: '15px',
-                    fontWeight: 900,
-                    color: '#10b981',
-                    background: 'rgba(16, 185, 129, 0.12)',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    letterSpacing: '-0.02em',
-                  }}>
-                    {Number(speed).toFixed(1)}x
-                  </span>
-                </div>
 
-                {/* Slider Arrastável de 0.5x até 4.0x com botões de ajuste fino */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    onClick={() => onChangeSpeed(Math.max(0.5, Number((speed - 0.1).toFixed(1))))}
-                    style={{
-                      width: '26px',
-                      height: '26px',
-                      borderRadius: '6px',
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      color: '#f1f5f9',
-                      fontWeight: 700,
-                      fontSize: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
-                    title="Diminuir 0.1x"
-                  >
-                    -
-                  </button>
-
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <input
                       type="range"
                       min={0.5}
@@ -365,116 +330,107 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                       onChange={(e) => onChangeSpeed(parseFloat(e.target.value))}
                       style={{
                         width: '100%',
-                        height: '6px',
-                        borderRadius: '3px',
+                        height: '4px',
+                        borderRadius: '2px',
                         accentColor: '#10b981',
                         cursor: 'pointer',
                         outline: 'none',
+                        background: `linear-gradient(to right, #10b981 0%, #10b981 ${((speed - 0.5) / 3.5) * 100}%, rgba(255, 255, 255, 0.15) ${((speed - 0.5) / 3.5) * 100}%, rgba(255, 255, 255, 0.15) 100%)`,
                       }}
                     />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#64748b', fontWeight: 600 }}>
-                      <span>0.5x</span>
-                      <span>1.0x</span>
-                      <span>2.0x</span>
-                      <span>4.0x</span>
-                    </div>
                   </div>
 
-                  <button
-                    onClick={() => onChangeSpeed(Math.min(4.0, Number((speed + 0.1).toFixed(1))))}
-                    style={{
-                      width: '26px',
-                      height: '26px',
-                      borderRadius: '6px',
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      color: '#f1f5f9',
-                      fontWeight: 700,
-                      fontSize: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
-                    title="Aumentar 0.1x"
-                  >
-                    +
-                  </button>
+                  {/* Caixinha com valor exato */}
+                  <div style={{
+                    minWidth: '32px',
+                    height: '24px',
+                    borderRadius: '6px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    color: '#ffffff',
+                    padding: '0 4px',
+                  }}>
+                    {Number(speed).toFixed(speed % 1 === 0 ? 0 : 1)}
+                  </div>
                 </div>
 
-                {/* Divisor */}
-                <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.07)' }} />
-
-                {/* Padrões de Clique Rápido */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
-                    Padrões Rápidos
-                  </span>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
-                    gap: '4px',
-                  }}>
-                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0].map((opt) => (
+                {/* Linha de Atalhos Rápidos Discretos */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: '8px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  gap: '4px',
+                }}>
+                  {[0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0].map((opt) => {
+                    const isSelected = Number(speed).toFixed(2) === opt.toFixed(2);
+                    return (
                       <button
                         key={opt}
-                        onClick={() => {
-                          onChangeSpeed(opt);
-                        }}
+                        onClick={() => onChangeSpeed(opt)}
                         style={{
-                          padding: '6px 0',
-                          borderRadius: '8px',
-                          fontSize: '11px',
-                          textAlign: 'center',
-                          background: Number(speed).toFixed(2) === opt.toFixed(2) || (speed === opt) ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
-                          color: Number(speed).toFixed(2) === opt.toFixed(2) || (speed === opt) ? '#ffffff' : '#cbd5e1',
-                          fontWeight: (speed === opt) ? 800 : 500,
-                          border: (speed === opt) ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.06)',
+                          padding: '3px 6px',
+                          borderRadius: '6px',
+                          fontSize: '10px',
+                          fontWeight: isSelected ? 800 : 500,
+                          background: isSelected ? '#10b981' : 'transparent',
+                          color: isSelected ? '#ffffff' : '#94a3b8',
+                          border: isSelected ? '1px solid #10b981' : '1px solid transparent',
                           cursor: 'pointer',
-                          transition: 'all 150ms',
+                          transition: 'all 120ms',
                         }}
                       >
                         {opt}x
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Selected Voice Pill */}
+          {/* Selected Voice Pill: Read by {selectedVoice.name} */}
           <button
             onClick={onOpenVoicePicker}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-primary)',
-              fontSize: '11px',
-              fontWeight: 500,
+              gap: '8px',
+              padding: '6px 14px',
+              borderRadius: '9999px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#f8fafc',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 150ms ease',
             }}
-            title="Trocar Narrador"
+            title="Abrir painel lateral de vozes"
           >
             <div style={{
-              width: '18px',
-              height: '18px',
+              width: '22px',
+              height: '22px',
               borderRadius: '50%',
-              background: selectedVoice.avatarColor,
+              background: selectedVoice.avatarColor || 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '9px',
-              color: '#fff',
-              fontWeight: 700,
+              fontSize: '11px',
+              color: '#ffffff',
+              fontWeight: 900,
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
             }}>
               {selectedVoice.name[0]}
             </div>
-            <span>{selectedVoice.name}</span>
+            <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 500 }}>Read by</span>
+            <span style={{ color: '#ffffff', fontWeight: 700 }}>{selectedVoice.name}</span>
           </button>
         </div>
       </div>

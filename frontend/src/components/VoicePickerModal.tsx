@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Play, Check, Sparkles, Volume2, SlidersHorizontal } from 'lucide-react';
+import { X, Play, Check, Heart, Plus, Volume2 } from 'lucide-react';
 import type { VoiceOption } from '../types';
 import { ELEVEN_VOICES } from '../data/voices';
 import { speechEngine } from '../services/speechEngine';
@@ -9,6 +9,7 @@ interface VoicePickerModalProps {
   onClose: () => void;
   selectedVoice: VoiceOption;
   onSelectVoice: (voice: VoiceOption) => void;
+  onNavigateToCloner?: () => void;
 }
 
 export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
@@ -16,13 +17,29 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
   onClose,
   selectedVoice,
   onSelectVoice,
+  onNavigateToCloner,
 }) => {
-  const [filterLang, setFilterLang] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'recent' | 'favorites' | 'explore' | 'created'>('recent');
   const [previewingId, setPreviewingId] = useState<string | null>(null);
-  const [stability, setStability] = useState<number>(selectedVoice.stability * 100);
-  const [clarity, setClarity] = useState<number>(selectedVoice.clarity * 100);
 
-  if (!isOpen) return null;
+  // Vozes favoritas salvas
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('gtp_favorite_voices');
+      return saved ? JSON.parse(saved) : ['francisca-dramatica', 'antonio-suspense', 'cid-moreira-legend'];
+    } catch {
+      return ['francisca-dramatica', 'antonio-suspense'];
+    }
+  });
+
+  const toggleFavorite = (e: React.MouseEvent, voiceId: string) => {
+    e.stopPropagation();
+    setFavoriteIds((prev) => {
+      const next = prev.includes(voiceId) ? prev.filter((id) => id !== voiceId) : [...prev, voiceId];
+      localStorage.setItem('gtp_favorite_voices', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const handlePreview = (e: React.MouseEvent, voice: VoiceOption) => {
     e.stopPropagation();
@@ -30,302 +47,358 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
     speechEngine.previewVoice(voice);
     setTimeout(() => {
       setPreviewingId(null);
-    }, 4000);
+    }, 4500);
   };
 
-  const [clonedVoices] = useState<VoiceOption[]>(() => {
+  if (!isOpen) return null;
+
+  // Vozes clonadas locais
+  const clonedVoices: VoiceOption[] = (() => {
     try {
       const saved = localStorage.getItem('gtp_cloned_voices');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
     }
-  });
+  })();
 
-  const allVoices = [...clonedVoices, ...ELEVEN_VOICES];
+  // Voz especial Cid Moreira (Lenda brasileira de narração dramática)
+  const cidMoreiraVoice: VoiceOption = {
+    id: 'cid-moreira-legend',
+    name: 'Cid Moreira™',
+    gender: 'male',
+    lang: 'pt-BR',
+    accent: 'Brasil (Voz Lendária & Profunda)',
+    tag: 'Brazilian Legend & Dramatic Narrator',
+    description: 'Tom icônico, solene e comovente. Ideal para suspense, mistério, história e ficção épica.',
+    samplePhrase: 'No princípio era o verbo... e as trevas cobriam a face do abismo.',
+    avatarColor: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+    stability: 0.95,
+    clarity: 0.98,
+    speed: 0.95,
+  };
 
-  const filteredVoices = allVoices.filter((v) => {
-    if (filterLang === 'pt') return v.lang.startsWith('pt');
-    if (filterLang === 'en') return v.lang.startsWith('en');
-    return true;
+  const allVoicesList = [cidMoreiraVoice, ...clonedVoices, ...ELEVEN_VOICES];
+
+  const displayedVoices = allVoicesList.filter((v) => {
+    if (activeTab === 'favorites') return favoriteIds.includes(v.id);
+    if (activeTab === 'created') return clonedVoices.some((c) => c.id === v.id);
+    if (activeTab === 'recent') return true;
+    return true; // explore
   });
 
   return (
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 100,
+      zIndex: 120,
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'flex-end',
       backgroundColor: 'rgba(0, 0, 0, 0.65)',
       backdropFilter: 'blur(8px)',
-      padding: '20px',
+      WebkitBackdropFilter: 'blur(8px)',
+      transition: 'opacity 250ms ease',
     }}>
+      {/* Backdrop clicável para fechar */}
       <div 
-        className="slide-up"
-        style={{
-          width: '100%',
-          maxWidth: '750px',
-          maxHeight: '90vh',
-          background: 'var(--bg-surface)',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-subtle)',
-          boxShadow: 'var(--shadow-lg)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
+        onClick={onClose} 
+        style={{ flex: 1, cursor: 'pointer' }} 
+      />
+
+      {/* Drawer Lateral Direito */}
+      <div style={{
+        width: '100%',
+        maxWidth: '430px',
+        height: '100%',
+        background: '#090d16',
+        borderLeft: '1px solid rgba(255, 255, 255, 0.12)',
+        boxShadow: '-10px 0 35px rgba(0, 0, 0, 0.7)',
+        display: 'flex',
+        flexDirection: 'column',
+        zIndex: 130,
+        animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+      }}>
+        {/* Header do Drawer: Voices + Fechar */}
         <div style={{
+          padding: '20px 24px 16px 24px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '20px 24px',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
         }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sparkles size={18} color="var(--accent-primary)" />
-              <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Galeria de Vozes ElevenLabs
-              </h2>
-            </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              Escolha um narrador ultra-realista para dar vida às páginas do seu livro.
-            </p>
-          </div>
+          <h2 style={{
+            fontSize: '18px',
+            fontWeight: 800,
+            color: '#f8fafc',
+            letterSpacing: '-0.02em',
+          }}>
+            Voices
+          </h2>
 
           <button
             onClick={onClose}
             style={{
-              padding: '8px',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--text-muted)',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              color: '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 150ms',
             }}
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Filter Tabs */}
+        {/* Abas em Pílula (Recent | Favorites | Explore | Created) */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: '6px',
           padding: '12px 24px',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
           background: 'rgba(255, 255, 255, 0.02)',
         }}>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginRight: '4px' }}>Idioma:</span>
           {[
-            { id: 'all', label: 'Todas as Vozes' },
-            { id: 'pt', label: '🇧🇷 Português do Brasil' },
-            { id: 'en', label: '🇺🇸 / 🇬🇧 Inglês' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilterLang(tab.id)}
-              style={{
-                padding: '4px 12px',
-                borderRadius: 'var(--radius-full)',
-                fontSize: '12px',
-                fontWeight: 500,
-                background: filterLang === tab.id ? 'var(--accent-primary)' : 'var(--bg-surface-elevated)',
-                color: filterLang === tab.id ? '#ffffff' : 'var(--text-secondary)',
-                border: '1px solid var(--border-subtle)',
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Voice Cards List */}
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '20px 24px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: '14px',
-        }}>
-          {filteredVoices.map((voice) => {
-            const isSelected = selectedVoice.id === voice.id;
+            { id: 'recent', label: 'Recent' },
+            { id: 'favorites', label: 'Favorites' },
+            { id: 'explore', label: 'Explore' },
+            { id: 'created', label: 'Created' },
+          ].map((tab) => {
+            const isSelected = activeTab === tab.id;
             return (
-              <div
-                key={voice.id}
-                onClick={() => onSelectVoice(voice)}
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  padding: '16px',
-                  borderRadius: 'var(--radius-md)',
-                  background: isSelected ? 'var(--bg-surface-elevated)' : 'var(--bg-surface)',
-                  border: isSelected ? '2px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
-                  boxShadow: isSelected ? '0 0 16px var(--accent-glow)' : 'var(--shadow-sm)',
+                  padding: '6px 14px',
+                  borderRadius: '9999px',
+                  fontSize: '12px',
+                  fontWeight: isSelected ? 800 : 500,
+                  background: isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
+                  color: isSelected ? '#000000' : '#94a3b8',
+                  border: isSelected ? '1px solid #ffffff' : '1px solid rgba(255, 255, 255, 0.08)',
                   cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'all var(--transition-fast)',
+                  transition: 'all 150ms ease',
                 }}
               >
-                {/* Top Row: Avatar, Name, Accent & Check */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '50%',
-                      background: voice.avatarColor,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#ffffff',
-                      fontWeight: 700,
-                      fontSize: '16px',
-                      boxShadow: 'var(--shadow-sm)',
-                    }}>
-                      {voice.name[0]}
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {voice.name}
-                        </span>
-                        <span style={{
-                          fontSize: '10px',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          background: 'rgba(255, 255, 255, 0.08)',
-                          color: 'var(--text-secondary)',
-                          fontWeight: 500,
-                        }}>
-                          {voice.accent}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '11px', color: 'var(--accent-primary)', fontWeight: 600 }}>
-                        {voice.tag}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isSelected && (
-                    <div style={{
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '50%',
-                      background: 'var(--accent-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#ffffff',
-                    }}>
-                      <Check size={14} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Description */}
-                <p style={{
-                  fontSize: '12px',
-                  color: 'var(--text-secondary)',
-                  lineHeight: 1.4,
-                }}>
-                  {voice.description}
-                </p>
-
-                {/* Bottom Row: Sample phrase preview button */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingTop: '8px',
-                  borderTop: '1px solid var(--border-subtle)',
-                  marginTop: 'auto',
-                }}>
-                  <button
-                    onClick={(e) => handlePreview(e, voice)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '5px 10px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--bg-surface-elevated)',
-                      border: '1px solid var(--border-subtle)',
-                      color: 'var(--text-primary)',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {previewingId === voice.id ? <Volume2 size={13} color="var(--accent-primary)" /> : <Play size={13} />}
-                    <span>{previewingId === voice.id ? 'Ouvindo...' : 'Ouvir Exemplo'}</span>
-                  </button>
-
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Estabilidade: {Math.round(voice.stability * 100)}%
-                  </span>
-                </div>
-              </div>
+                {tab.label}
+              </button>
             );
           })}
         </div>
 
-        {/* ElevenLabs Advanced Tuning Footer */}
+        {/* Área Scrollável */}
         <div style={{
-          padding: '16px 24px',
-          background: 'var(--bg-surface-elevated)',
-          borderTop: '1px solid var(--border-subtle)',
+          flex: 1,
+          overflowY: 'auto',
+          padding: '18px 24px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px',
+          gap: '16px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <SlidersHorizontal size={14} color="var(--accent-primary)" />
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Ajustes de Voz (ElevenLabs Voice Settings)
+          {/* Card de Ação: Create New Voice */}
+          <div>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: '#64748b',
+              display: 'block',
+              marginBottom: '8px',
+            }}>
+              Design your own narrator
             </span>
+
+            <button
+              onClick={() => {
+                onClose();
+                onNavigateToCloner?.();
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px 16px',
+                borderRadius: '14px',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px dashed rgba(16, 185, 129, 0.4)',
+                color: '#f8fafc',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 200ms',
+              }}
+            >
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: '#10b981',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 900,
+              }}>
+                <Plus size={18} />
+              </div>
+              <div>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc', display: 'block' }}>
+                  Create new voice
+                </span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  Clone sua própria voz ou crie um narrador exclusivo
+                </span>
+              </div>
+            </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            {/* Stability */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                <span>Estabilidade da Voz</span>
-                <span>{stability}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={stability}
-                onChange={(e) => setStability(Number(e.target.value))}
-                style={{ accentColor: 'var(--accent-primary)' }}
-              />
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                Mais estável = narração uniforme. Mais variável = maior emoção e drama.
-              </span>
-            </div>
+          {/* Subtítulo: Recent voices */}
+          <div>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              color: '#64748b',
+              display: 'block',
+              marginBottom: '10px',
+            }}>
+              {activeTab === 'favorites' ? 'Vozes Favoritas' : activeTab === 'created' ? 'Vozes Criadas por Você' : 'Recent voices'}
+            </span>
 
-            {/* Clarity */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                <span>Clareza & Fidelidade</span>
-                <span>{clarity}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={clarity}
-                onChange={(e) => setClarity(Number(e.target.value))}
-                style={{ accentColor: 'var(--accent-primary)' }}
-              />
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                Aumenta a precisão de dicção e remove ruídos de fundo.
-              </span>
+            {/* Lista de Vozes */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {displayedVoices.map((voice) => {
+                const isSelected = selectedVoice.id === voice.id;
+                const isFav = favoriteIds.includes(voice.id);
+                const isPreviewing = previewingId === voice.id;
+
+                return (
+                  <div
+                    key={voice.id}
+                    onClick={() => onSelectVoice(voice)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 14px',
+                      borderRadius: '14px',
+                      background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                      border: isSelected ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                      cursor: 'pointer',
+                      transition: 'all 150ms ease',
+                    }}
+                  >
+                    {/* Esquerda: Avatar + Informações da voz */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, overflow: 'hidden' }}>
+                      <div style={{
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: '50%',
+                        background: voice.avatarColor || 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        fontSize: '15px',
+                        flexShrink: 0,
+                        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)',
+                      }}>
+                        {voice.name[0]}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '13px',
+                            fontWeight: isSelected ? 800 : 700,
+                            color: isSelected ? '#10b981' : '#f8fafc',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}>
+                            {voice.name}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: '11px',
+                          color: '#94a3b8',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}>
+                          {voice.tag || voice.accent}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Direita: Ações (Play Amostra, Favorito, Check) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <button
+                        onClick={(e) => handlePreview(e, voice)}
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          background: isPreviewing ? '#10b981' : 'rgba(255, 255, 255, 0.08)',
+                          color: isPreviewing ? '#ffffff' : '#cbd5e1',
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                        }}
+                        title="Ouvir amostra de voz"
+                      >
+                        {isPreviewing ? <Volume2 size={13} /> : <Play size={12} style={{ marginLeft: '1px' }} />}
+                      </button>
+
+                      <button
+                        onClick={(e) => toggleFavorite(e, voice.id)}
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          background: 'transparent',
+                          color: isFav ? '#ef4444' : '#64748b',
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                        }}
+                        title={isFav ? 'Remover dos favoritos' : 'Favoritar voz'}
+                      >
+                        <Heart size={14} fill={isFav ? '#ef4444' : 'none'} />
+                      </button>
+
+                      {isSelected && (
+                        <div style={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '50%',
+                          background: '#10b981',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          <Check size={13} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
