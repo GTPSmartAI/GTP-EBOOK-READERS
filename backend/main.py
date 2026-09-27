@@ -1,5 +1,5 @@
 """
-ElevenReader - Motor de Automações em Segundo Plano (Python Engine)
+Aedolia - Motor de Automações em Segundo Plano (Python Engine)
 Padrão arquitetural GTP-TESTE-SISTEMA com APScheduler, Logging Rotativo e Heartbeat.
 """
 

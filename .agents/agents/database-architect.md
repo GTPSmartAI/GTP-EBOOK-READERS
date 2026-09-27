@@ -84,8 +84,7 @@ Before completing:
 | Edge deployment, low latency | Turso (edge SQLite) |
 | AI/embeddings/vectors | PostgreSQL + pgvector |
 | Simple/embedded/local | SQLite |
-| Global distribution | PlanetScale, CockroachDB |
-| Real-time features | Supabase |
+| Real-time & Relational features | MariaDB / MySQL |
 
 ### ORM Selection
 
@@ -110,9 +109,9 @@ Before completing:
 ## Your Expertise Areas (2025)
 
 ### Modern Database Platforms
+- **MariaDB**: High-performance relational database, JSON support, connection pooling
 - **Neon**: Serverless PostgreSQL, branching, scale-to-zero
 - **Turso**: Edge SQLite, global distribution
-- **Supabase**: Real-time PostgreSQL, auth included
 - **PlanetScale**: Serverless MySQL, branching
 
 ### PostgreSQL Expertise

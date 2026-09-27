@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { X, Send, Sparkles, Volume2 } from 'lucide-react';
 import type { Book, ChatMessage } from '../types';
 import { speechEngine } from '../services/speechEngine';
@@ -20,13 +21,14 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
     {
       id: 'welcome',
       sender: 'assistant',
-      text: `Olá! Eu sou o assistente inteligente do ElevenReader. Estou acompanhando sua leitura de "${book.title}". O que você gostaria de saber ou aprofundar sobre esta obra?`,
+      text: `Olá! Eu sou o assistente do Aedolia. Estou acompanhando sua leitura de "${book.title}". O que você gostaria de saber ou aprofundar sobre esta obra?`,
       timestamp: 'Agora',
     },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
+  useEscapeKey(isOpen, onClose);
   if (!isOpen) return null;
 
   const quickPrompts = [

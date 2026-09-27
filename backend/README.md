@@ -1,6 +1,6 @@
-# 🐍 ElevenReader - Backend Python
+# 🐍 Aedolia - Backend Python
 
-Motor de backend e automações para o **ElevenReader**, construído no padrão arquitetural modular de `GTP-TESTE-SISTEMA` com banco de dados **Supabase**.
+Motor de backend e automações para o **Aedolia**, construído no padrão arquitetural modular de `GTP-TESTE-SISTEMA` com banco de dados **MariaDB** e Object Storage **MinIO S3**.
 
 ---
 
@@ -14,13 +14,15 @@ cd backend
 pip install -r requirements.txt
 
 # 3. Iniciar o motor de automações + API Server
-python main.py
+python api_server.py
 ```
 
 O servidor iniciará automaticamente:
-* 🌐 **API Server:** `http://localhost:5000`
+* 🌐 **API Server:** `http://localhost:4000`
 * ⏱️ **Motor APScheduler:** Monitoramento e automações em background
-* 📝 **Logs:** Gerados automaticamente em `automation.log` com rotação preventiva
+* 📝 **Logs:** Gerados automaticamente com rotação preventiva
+* 🗄️ **Banco de Dados:** Conexão nativa com MariaDB (`ebook_readers_gtp`)
+* 📦 **Storage:** Integração com MinIO S3 (`ebook-readers-gtp`)
 
 ---
 
@@ -31,4 +33,4 @@ Quando um cliente conclui uma compra em qualquer plataforma (Kiwify, Hotmart, As
 * **Método:** `POST`
 * **Payload:** `{ "email": "usuario@exemplo.com", "plan": "pro", "status": "paid" }`
 
-O backend atualiza instantaneamente o usuário no Supabase para assinante **PRO** ativo.
+O backend atualiza instantaneamente o usuário no MariaDB para assinante **PRO** ativo.

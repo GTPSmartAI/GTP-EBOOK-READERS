@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { BACKEND_URL } from '../config';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { X, Check, Zap, Sparkles, Crown, ShieldCheck, Loader2 } from 'lucide-react';
-import type { UserProfile } from '../services/supabase';
+import type { UserProfile } from '../services/api';
 
 interface SubscriptionModalProps {
   isOpen: boolean;
@@ -21,6 +23,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const [simulating, setSimulating] = useState(false);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
+  useEscapeKey(isOpen, onClose);
   if (!isOpen) return null;
 
   const isPro = userProfile?.subscription_tier === 'pro' || userProfile?.subscription_tier === 'unlimited';
@@ -37,7 +40,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
     try {
       // Calls backend webhook endpoint to simulate gateway payment approval
-      const response = await fetch('http://localhost:4000/api/webhooks/payment', {
+      const response = await fetch(`${BACKEND_URL}/api/webhooks/payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,7 +55,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
       const res = await response.json();
       if (res.success) {
-        setSuccessNotice('🎉 Pagamento aprovado! Seu plano PRO foi ativado no Supabase.');
+        setSuccessNotice('🎉 Pagamento aprovado! Seu plano PRO foi ativado com sucesso.');
         onPlanUpgraded();
       }
     } catch (e) {
@@ -114,7 +117,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             </div>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                Planos & Assinatura ElevenReader
+                Planos e assinatura Aedolia
               </h2>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                 Desbloqueie narração ilimitada com inteligência artificial neural e todas as vozes.
@@ -191,7 +194,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           overflowY: 'auto',
           padding: '24px',
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
           gap: '20px',
         }}>
           {/* Free Tier */}
@@ -276,7 +279,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
             <div>
               <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase' }}>
-                ElevenReader PRO
+                Aedolia PRO
               </span>
               <h3 style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
                 {billingCycle === 'monthly' ? 'R$ 29,90' : 'R$ 23,90'}
@@ -289,9 +292,9 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '18px' }}>
                 {[
                   'PDFs e E-books ilimitados',
-                  'Todas as vozes neurais ElevenLabs',
+                  'Todas as vozes premium',
                   'Conversa com o Livro (IA ilimitada)',
-                  'Sincronização em nuvem via Supabase',
+                  'Sincronização em nuvem via MariaDB + MinIO',
                   'Ajuste avançado de estabilidade & clareza',
                 ].map((item, idx) => (
                   <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-primary)', fontWeight: 500 }}>

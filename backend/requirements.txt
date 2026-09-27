@@ -1,4 +1,4 @@
-# ElevenReader - Backend Python Dependencies
+# Aedolia - Backend Python Dependencies
 # Arquitetura modular padronizada com GTP-TESTE-SISTEMA
 
 # Scheduler (Motor de Automações em Background)
@@ -11,9 +11,11 @@ Flask-CORS==6.0.5
 # Environment Variables
 python-dotenv==1.2.3
 
-# Supabase Client & Networking
-supabase==2.31.0
-postgrest==2.31.0
+# MariaDB / MySQL Driver
+pymysql>=1.2.3
+cryptography>=42.0.0
+
+# Networking & HTTP Clients
 requests==2.34.2
 httpx==0.28.1
 
@@ -21,9 +23,23 @@ httpx==0.28.1
 python-dateutil==2.9.0.post0
 pytz==2026.4
 
-# PDF, EPUB e Processamento de Documentos
+# PDF, EPUB, DOCX e Processamento de Documentos
 pypdf==6.19.0
 beautifulsoup4>=4.12.0
+python-docx>=1.2.0
 
-# Síntese Neural de Voz
+# Síntese Neural de Voz (Microsoft Edge TTS, grátis)
 edge-tts>=7.0.0
+
+# Senhas (Argon2id, vencedor da Password Hashing Competition)
+argon2-cffi>=23.1.0
+
+# Vozes do plano grátis: Piper (ONNX, roda no servidor) e conversão para MP3
+piper-tts>=1.3.0
+lameenc>=1.7.0
+
+# Login com Google (confere o ID token)
+google-auth>=2.30.0
+
+# MinIO / S3 Object Storage
+minio>=7.2.20

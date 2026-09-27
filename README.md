@@ -1,4 +1,4 @@
-# Ebook Readers GTP 🎙️📚
+# Aedolia 🎙️📚
 
 Plataforma moderna e imersiva para leitura de PDFs e e-books com síntese de voz neural sincronizada (Karaoke Highlighting), entonação cinematográfica com suspense, pré-carregamento contínuo em buffer (3 a 4 páginas) e **Duplicador de Voz com IA (Instant Voice Cloning)**.
 
@@ -11,14 +11,10 @@ Plataforma moderna e imersiva para leitura de PDFs e e-books com síntese de voz
    - Alternância entre leitura fluida formatada e visualização do documento original.
    - Velocidade ajustável (0.75x a 2.0x), salto de sentenças e navegação por capítulos.
 
-2. **Vozes Neurais de Alta Definição (Drama & Suspense):**
-   - Motor neural integrado via **Microsoft Azure Neural / Edge-TTS** (gratuito e sem limites).
-   - Vozes brasileiras de estúdio:
-     - **Francisca (Cinematográfica & Drama)**
-     - **Antônio (Suspense & Narração Profunda)**
-     - **Thalita (Storyteller & Expressiva)**
-     - **Manuela (Audiolivro Clássico)**
-   - Conector pronto para **ElevenLabs Multilingual v2**.
+2. **Vozes neurais em português do Brasil:**
+   - Síntese pelo Edge TTS (Microsoft). Catálogo em `backend/components/SinteseVoz/voice_catalog.json`.
+   - Vozes atuais: **Francisca** (básica e jovem) e **Thalita** (básica e madura).
+   - Detalhes e limites medidos em `doc/memoria/voz-e-desempenho.md`.
 
 3. **Buffer Contínuo de Páginas (3 a 4 páginas):**
    - O sistema realiza pré-carregamento em lote das próximas frases em segundo plano.
@@ -27,11 +23,11 @@ Plataforma moderna e imersiva para leitura de PDFs e e-books com síntese de voz
 4. **Duplicador de Voz com IA (Voice Cloning para Assinantes):**
    - Gravação de amostra ao vivo com microfone diretamente no navegador (com texto guia de 30s).
    - Upload de áudios em `.mp3`, `.wav` ou `.m4a`.
-   - Armazenamento no Supabase Storage e ativação imediata como narrador pessoal no Leitor.
+   - Armazenamento no MinIO S3 e ativação imediata como narrador pessoal no Leitor.
 
-5. **Armazenamento e Banco de Dados Supabase:**
-   - Upload de arquivos PDF físicos diretamente para o bucket `pdf-uploads`.
-   - Persistência de progresso de leitura, perfis e assinaturas PRO.
+5. **Armazenamento e Banco de Dados (MariaDB + MinIO S3):**
+   - Upload de arquivos PDF/EPUB físicos diretamente para o bucket `ebook-readers-gtp` no MinIO S3.
+   - Persistência de progresso de leitura, perfis e assinaturas PRO no MariaDB (`ebook_readers_gtp`).
 
 ---
 
@@ -46,12 +42,11 @@ Plataforma moderna e imersiva para leitura de PDFs e e-books com síntese de voz
 │   │   ├── GestaoAssinaturas/     # Webhooks de pagamento (Kiwify, Stripe, Asaas, n8n)
 │   │   ├── AssistenteIA/          # "Pergunte ao Livro" contextual
 │   │   └── AlertasErro/           # Tratamento de exceções e monitoramento
-│   ├── shared/python/             # Configurações de banco, Supabase e logger
+│   ├── shared/python/             # Configurações de banco, MariaDB, MinIO e logger
 │   ├── uploads/                   # Diretório de trabalho e cache de áudio
 │   ├── api_server.py              # API Flask (Porta 4000)
-│   ├── main.py                    # Motor de tarefas em segundo plano (APScheduler)
 │   ├── requirements.txt           # Dependências Python
-│   └── schema.sql                 # Esquema do banco de dados Supabase
+│   └── schema_mariadb.sql         # Esquema do banco de dados MariaDB
 ├── frontend/
 │   ├── src/
 │   │   ├── components/            # AudioPlayer, UploadModal, VoicePicker, Drawers
@@ -61,7 +56,7 @@ Plataforma moderna e imersiva para leitura de PDFs e e-books com síntese de voz
 │   │   │   ├── Leitor/            # Leitor com karaoke sync e drawer de IA
 │   │   │   ├── Vozes/             # Catálogo de vozes neurais & Duplicador IA
 │   │   │   └── Configuracoes/     # Tipografia, temas e assinatura PRO
-│   │   ├── services/              # speechEngine.ts, pdfParser.ts, supabase.ts
+│   │   ├── services/              # speechEngine.ts, pdfParser.ts, api.ts
 │   │   ├── types/                 # Tipos TypeScript
 │   │   └── index.css              # Design System Soft & Bold Cyber-Dark Esmeralda
 │   ├── package.json

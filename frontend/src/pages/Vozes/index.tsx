@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { apiFetch } from '../../services/session';
 import { 
   Heart, 
   Volume2, 
@@ -13,7 +14,10 @@ import {
   CheckCircle2, 
   Loader2, 
   Trash2, 
-  AudioLines 
+  AudioLines,
+  Compass,
+  ExternalLink,
+  HelpCircle
 } from 'lucide-react';
 import type { VoiceOption } from '../../types';
 
@@ -28,6 +32,8 @@ interface VozesProps {
   isProUser?: boolean;
 }
 
+type FilterCategory = 'all' | 'grave' | 'espacosa' | 'cinema' | 'pt' | 'en';
+
 export const Vozes: React.FC<VozesProps> = ({
   voices,
   selectedVoice,
@@ -39,12 +45,16 @@ export const Vozes: React.FC<VozesProps> = ({
   isProUser = true,
 }) => {
   const [activeTab, setActiveTab] = useState<'catalogo' | 'duplicador'>('catalogo');
-  const [filterLang, setFilterLang] = useState<string>('all');
+  const [filterStyle, setFilterStyle] = useState<FilterCategory>('all');
   
   // Voice Cloning State
   const [voiceName, setVoiceName] = useState('');
   const [gender, setGender] = useState<'male' | 'female'>('male');
-  const [narrativeStyle, setNarrativeStyle] = useState('Dramático & Suspense');
+  const [narrativeStyle, setNarrativeStyle] = useState('Grave & Solene (Cid Moreira)');
+  const [pitchAdjustment, setPitchAdjustment] = useState('-8Hz');
+  const [cadenceChoice, setCadenceChoice] = useState<'espacosa' | 'dramatica' | 'natural'>('espacosa');
+  const [baseVoiceChoice, setBaseVoiceChoice] = useState('pt-BR-AntonioNeural');
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -114,7 +124,6 @@ export const Vozes: React.FC<VozesProps> = ({
         setAudioBlob(blob);
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
-        // Stop audio tracks
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -153,7 +162,7 @@ export const Vozes: React.FC<VozesProps> = ({
       return;
     }
     if (!audioBlob) {
-      setCloneErrorMsg('Grave um áudio de pelo menos 15 segundos ou envie um arquivo de áudio.');
+      setCloneErrorMsg('Grave um áudio de pelo menos 15 segundos ou envie um arquivo de áudio (.mp3 ou .wav).');
       return;
     }
 
@@ -167,9 +176,11 @@ export const Vozes: React.FC<VozesProps> = ({
       formData.append('voice_name', voiceName.trim());
       formData.append('gender', gender);
       formData.append('style', narrativeStyle);
-      formData.append('user_id', 'pro_subscriber');
+      formData.append('pitch', pitchAdjustment);
+      formData.append('cadence', cadenceChoice);
+      formData.append('base_voice', baseVoiceChoice);
 
-      const response = await fetch('http://localhost:4000/api/voices/clone', {
+      const response = await apiFetch('/api/voices/clone', {
         method: 'POST',
         body: formData,
       });
@@ -193,7 +204,7 @@ export const Vozes: React.FC<VozesProps> = ({
       }
       onSelectVoice(newVoice);
 
-      setCloneSuccessMsg(`Voz "${newVoice.name}" clonada com sucesso! Ela já foi definida como a voz ativa do seu leitor.`);
+      setCloneSuccessMsg(`Voz "${newVoice.name}" configurada com sucesso! Ela já foi definida como a voz ativa do seu leitor.`);
       setVoiceName('');
       setAudioBlob(null);
       setAudioUrl(null);
@@ -215,9 +226,12 @@ export const Vozes: React.FC<VozesProps> = ({
   const allDisplayVoices = [...clonedVoices, ...voices];
 
   const filteredVoices = allDisplayVoices.filter((v) => {
-    if (filterLang === 'pt') return v.lang.startsWith('pt');
-    if (filterLang === 'en') return v.lang.startsWith('en');
-    return true;
+    if (filterStyle === 'pt') return v.lang.startsWith('pt');
+    if (filterStyle === 'en') return v.lang.startsWith('en');
+    if (filterStyle === 'grave') return v.category === 'grave' || (v.pitch && parseInt(v.pitch) <= -4);
+    if (filterStyle === 'espacosa') return v.category === 'espacosa' || v.cadence === 'espacosa';
+    if (filterStyle === 'cinema') return v.category === 'cinema';
+    return true; // all
   });
 
   return (
@@ -245,8 +259,8 @@ export const Vozes: React.FC<VozesProps> = ({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
-              width: '36px',
-              height: '36px',
+              width: '40px',
+              height: '40px',
               borderRadius: '12px',
               background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
               display: 'flex',
@@ -255,7 +269,7 @@ export const Vozes: React.FC<VozesProps> = ({
               color: '#fff',
               boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
             }}>
-              <Mic2 size={20} />
+              <Mic2 size={22} />
             </div>
             <div>
               <h1 style={{
@@ -268,7 +282,7 @@ export const Vozes: React.FC<VozesProps> = ({
                 Vozes Neurais & Duplicador IA
               </h1>
               <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '2px' }}>
-                Entonação humana cinematográfica com suspense e clonagem da sua própria voz para narração.
+                Vozes mais graves, espaçadas e lentas para filosofia, suspense e audiolivros de alta imersão.
               </p>
             </div>
           </div>
@@ -299,10 +313,11 @@ export const Vozes: React.FC<VozesProps> = ({
               color: activeTab === 'catalogo' ? '#ffffff' : '#94a3b8',
               boxShadow: activeTab === 'catalogo' ? '0 4px 12px rgba(16, 185, 129, 0.3)' : 'none',
               transition: 'all 200ms',
+              cursor: 'pointer',
             }}
           >
             <AudioLines size={15} />
-            <span>Vozes Cinematográficas</span>
+            <span>Catálogo de Vozes</span>
           </button>
 
           <button
@@ -321,10 +336,11 @@ export const Vozes: React.FC<VozesProps> = ({
               color: activeTab === 'duplicador' ? '#ffffff' : '#94a3b8',
               boxShadow: activeTab === 'duplicador' ? '0 4px 12px rgba(16, 185, 129, 0.3)' : 'none',
               transition: 'all 200ms',
+              cursor: 'pointer',
             }}
           >
             <Sparkles size={15} />
-            <span>Duplicador de Voz (Clone)</span>
+            <span>Subir Voz & Duplicador IA</span>
           </button>
         </div>
       </div>
@@ -340,23 +356,28 @@ export const Vozes: React.FC<VozesProps> = ({
             flexWrap: 'wrap',
             gap: '16px',
           }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {[
                 { id: 'all', label: 'Todas as Vozes' },
-                { id: 'pt', label: '🇧🇷 Português do Brasil' },
-                { id: 'en', label: '🇺🇸 / 🇬🇧 Inglês' },
+                { id: 'grave', label: 'Mais Graves 🎙️' },
+                { id: 'espacosa', label: 'Espaçosas & Lentas 🧘' },
+                { id: 'cinema', label: 'Cinematográficas 🎬' },
+                { id: 'pt', label: '🇧🇷 Português' },
+                { id: 'en', label: '🇺🇸 Inglês' },
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setFilterLang(tab.id)}
+                  onClick={() => setFilterStyle(tab.id as FilterCategory)}
                   style={{
                     padding: '6px 14px',
                     borderRadius: '12px',
                     fontSize: '12px',
                     fontWeight: 700,
-                    background: filterLang === tab.id ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-surface)',
-                    color: filterLang === tab.id ? '#10b981' : '#94a3b8',
-                    border: filterLang === tab.id ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--border-subtle)',
+                    background: filterStyle === tab.id ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-surface)',
+                    color: filterStyle === tab.id ? '#10b981' : '#94a3b8',
+                    border: filterStyle === tab.id ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--border-subtle)',
+                    cursor: 'pointer',
+                    transition: 'all 120ms',
                   }}
                 >
                   {tab.label}
@@ -371,7 +392,7 @@ export const Vozes: React.FC<VozesProps> = ({
                 fontWeight: 800,
                 color: '#10b981',
                 background: 'rgba(16, 185, 129, 0.12)',
-                padding: '4px 10px',
+                padding: '4px 12px',
                 borderRadius: '8px',
                 border: '1px solid rgba(16, 185, 129, 0.25)',
               }}>
@@ -383,13 +404,15 @@ export const Vozes: React.FC<VozesProps> = ({
           {/* Grid de Vozes */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))',
             gap: '20px',
           }}>
             {filteredVoices.map((voice) => {
               const isSelected = selectedVoice.id === voice.id;
               const isFav = favoriteVoiceIds.includes(voice.id);
               const isCloned = (voice as any).isCloned;
+              const isGrave = voice.category === 'grave' || (voice.pitch && parseInt(voice.pitch) <= -4);
+              const isEspacosa = voice.category === 'espacosa' || voice.cadence === 'espacosa';
 
               return (
                 <div
@@ -407,6 +430,7 @@ export const Vozes: React.FC<VozesProps> = ({
                     justifyContent: 'space-between',
                     position: 'relative',
                     boxShadow: isSelected ? '0 12px 30px rgba(16, 185, 129, 0.15)' : 'var(--shadow-sm)',
+                    transition: 'all 200ms ease',
                   }}
                 >
                   <div>
@@ -449,27 +473,27 @@ export const Vozes: React.FC<VozesProps> = ({
                                 <Check size={11} /> ATIVA
                               </span>
                             )}
-                            {isCloned && (
+                            {!isCloned && (
                               <span style={{
-                                fontSize: '10px',
+                                fontSize: '9px',
                                 fontWeight: 800,
-                                background: 'rgba(16, 185, 129, 0.2)',
-                                color: '#10b981',
                                 padding: '2px 6px',
                                 borderRadius: '6px',
-                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                background: voice.tier === 'premium' ? 'rgba(245, 158, 11, 0.18)' : 'rgba(148, 163, 184, 0.12)',
+                                color: voice.tier === 'premium' ? '#fbbf24' : '#94a3b8',
+                                border: voice.tier === 'premium' ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid rgba(148, 163, 184, 0.25)',
                               }}>
-                                SUA VOZ
+                                {voice.tier === 'premium' ? (isProUser ? '★ PRO' : '🔒 PRO') : 'GRÁTIS'}
                               </span>
                             )}
                           </div>
-                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
                             {voice.accent}
                           </span>
                         </div>
                       </div>
 
-                      {/* Favorite & Delete Buttons */}
+                      {/* Right top actions: Delete (if cloned) or Fav */}
                       <div style={{ display: 'flex', gap: '6px' }}>
                         {isCloned && (
                           <button
@@ -477,15 +501,16 @@ export const Vozes: React.FC<VozesProps> = ({
                               e.stopPropagation();
                               handleDeleteClonedVoice(voice.id);
                             }}
+                            title="Remover voz clonada"
                             style={{
-                              padding: '8px',
+                              padding: '6px',
                               color: '#ef4444',
                               background: 'rgba(239, 68, 68, 0.1)',
                               borderRadius: '10px',
+                              cursor: 'pointer',
                             }}
-                            title="Remover voz clonada"
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={16} />
                           </button>
                         )}
 
@@ -495,10 +520,11 @@ export const Vozes: React.FC<VozesProps> = ({
                             onToggleFavoriteVoice(voice.id);
                           }}
                           style={{
-                            padding: '8px',
+                            padding: '6px',
                             color: isFav ? '#10b981' : '#64748b',
                             background: isFav ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.04)',
                             borderRadius: '10px',
+                            cursor: 'pointer',
                           }}
                         >
                           <Heart size={16} fill={isFav ? '#10b981' : 'none'} />
@@ -506,8 +532,8 @@ export const Vozes: React.FC<VozesProps> = ({
                       </div>
                     </div>
 
-                    {/* Tag Badge */}
-                    <div style={{ marginTop: '14px' }}>
+                    {/* Tag Badges */}
+                    <div style={{ marginTop: '14px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       <span style={{
                         fontSize: '11px',
                         fontWeight: 700,
@@ -519,6 +545,34 @@ export const Vozes: React.FC<VozesProps> = ({
                       }}>
                         {voice.tag}
                       </span>
+
+                      {isGrave && (
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          color: '#34d399',
+                          background: 'rgba(5, 150, 105, 0.2)',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                        }}>
+                          🎙️ ULTRA-GRAVE
+                        </span>
+                      )}
+
+                      {isEspacosa && (
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          color: '#818cf8',
+                          background: 'rgba(99, 102, 241, 0.2)',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(99, 102, 241, 0.3)',
+                        }}>
+                          🧘 ESPAÇOSA & LENTA
+                        </span>
+                      )}
                     </div>
 
                     {/* Description */}
@@ -574,6 +628,7 @@ export const Vozes: React.FC<VozesProps> = ({
                         textTransform: 'uppercase',
                         letterSpacing: '0.04em',
                         flexShrink: 0,
+                        cursor: 'pointer',
                       }}
                     >
                       <Volume2 size={13} />
@@ -587,7 +642,7 @@ export const Vozes: React.FC<VozesProps> = ({
         </div>
       )}
 
-      {/* ABA 2: DUPLICADOR DE VOZ COM IA (CLONAGEM) */}
+      {/* ABA 2: DUPLICADOR DE VOZ COM IA (SUBIR VOZ / CLONAGEM) */}
       {activeTab === 'duplicador' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           {/* Banner Hero do Duplicador */}
@@ -623,7 +678,7 @@ export const Vozes: React.FC<VozesProps> = ({
                   <Crown size={12} />
                   {isProUser ? 'PRO ATIVADO' : 'RECURSO VIP / PRO'}
                 </span>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Instant Voice Cloning</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Duplicador de Voz & Subir Amostras</span>
               </div>
 
               <h2 style={{
@@ -633,11 +688,11 @@ export const Vozes: React.FC<VozesProps> = ({
                 textTransform: 'uppercase',
                 letterSpacing: '-0.02em',
               }}>
-                Duplique Sua Própria Voz Para Narrar Seus Livros
+                Suba ou Grave Qualquer Voz Para Narrar Seus Livros
               </h2>
 
               <p style={{ fontSize: '14px', color: '#94a3b8', lineHeight: 1.6 }}>
-                Grave um minuto da sua voz ou envie um arquivo de áudio. Nossa inteligência artificial aprenderá suas nuances, timbre e entonação, permitindo que você ouça qualquer livro com a sua própria voz narrando as páginas.
+                Envie um arquivo de áudio (MP3 ou WAV) de qualquer locutor, ou grave sua própria voz no microfone. Você pode calibrar a afinação para deixá-la <strong>ultra-grave</strong> e ajustar o <strong>espaçamento entre pausas</strong> para leituras profundas e meditativas.
               </p>
             </div>
 
@@ -653,14 +708,182 @@ export const Vozes: React.FC<VozesProps> = ({
               <Sparkles size={24} color="#10b981" />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc' }}>
-                  {clonedVoices.length} Vozes Clonadas
+                  {clonedVoices.length} Vozes Personalizadas
                 </span>
-                <span style={{ fontSize: '11px', color: '#10b981' }}>Disponíveis no seu leitor</span>
+                <span style={{ fontSize: '11px', color: '#10b981' }}>Salvas e prontas no leitor</span>
               </div>
             </div>
           </div>
 
-          {/* Form de Clonagem */}
+          {/* GUIA EDUCATIVO: ONDE ACHAR VOZES NA INTERNET E COMO SUBIR */}
+          <div style={{
+            borderRadius: '24px',
+            padding: '28px',
+            background: 'rgba(15, 23, 42, 0.6)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'rgba(59, 130, 246, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#60a5fa',
+              }}>
+                <Compass size={18} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase' }}>
+                  Onde Encontrar Vozes na Internet Para Subir?
+                </h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  Repositórios abertos com gravações em alta fidelidade prontas para usar como amostras de locução:
+                </p>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))',
+              gap: '16px',
+            }}>
+              {/* Card 1: Hugging Face */}
+              <a
+                href="https://huggingface.co/datasets?task_categories=automatic-speech-recognition"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  textDecoration: 'none',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  transition: 'all 200ms',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#f8fafc' }}>
+                    🤗 Hugging Face Audio
+                  </span>
+                  <ExternalLink size={14} color="#94a3b8" />
+                </div>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  A maior plataforma de IA do mundo. Baixe amostras de datasets abertos como <em>Common Voice (Mozilla)</em> com vozes reais em português.
+                </p>
+              </a>
+
+              {/* Card 2: LibriVox */}
+              <a
+                href="https://librivox.org"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  textDecoration: 'none',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  transition: 'all 200ms',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#f8fafc' }}>
+                    📚 LibriVox Audiolivros
+                  </span>
+                  <ExternalLink size={14} color="#94a3b8" />
+                </div>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  Milhares de audiolivros em domínio público. Excelente para pegar trechos de 30 a 60 segundos de narradores literários experientes.
+                </p>
+              </a>
+
+              {/* Card 3: Freesound */}
+              <a
+                href="https://freesound.org"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  textDecoration: 'none',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  transition: 'all 200ms',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#f8fafc' }}>
+                    🎵 Freesound.org
+                  </span>
+                  <ExternalLink size={14} color="#94a3b8" />
+                </div>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  Pesquise por <em>"spoken voice"</em> ou <em>"narration"</em> para achar gravações limpas de estúdio com licença Creative Commons.
+                </p>
+              </a>
+
+              {/* Card 4: Internet Archive */}
+              <a
+                href="https://archive.org/details/audio_bookspoetry"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  textDecoration: 'none',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  transition: 'all 200ms',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#f8fafc' }}>
+                    🏛️ Internet Archive
+                  </span>
+                  <ExternalLink size={14} color="#94a3b8" />
+                </div>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  Acervo histórico com discursos solenes, leituras de clássicos, poemas e oratória de figuras marcantes do mundo todo.
+                </p>
+              </a>
+            </div>
+
+            {/* Dica de Gravação */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px',
+              padding: '14px 18px',
+              borderRadius: '14px',
+              background: 'rgba(16, 185, 129, 0.06)',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+            }}>
+              <HelpCircle size={18} color="#10b981" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.6 }}>
+                <strong>Dica de Ouro:</strong> Para ter o melhor resultado, use uma amostra de <strong>30 a 60 segundos</strong> de fala contínua, sem música de fundo e com pouco eco de sala.
+              </div>
+            </div>
+          </div>
+
+          {/* Form de Clonagem & Configurações */}
           <form 
             onSubmit={handleCreateClone}
             className="floating-card"
@@ -675,7 +898,7 @@ export const Vozes: React.FC<VozesProps> = ({
             }}
           >
             <h3 style={{ fontSize: '18px', fontWeight: 900, color: '#f8fafc', textTransform: 'uppercase' }}>
-              1. Grave ou Envie Sua Amostra de Voz
+              1. Envie ou Grave o Áudio da Voz
             </h3>
 
             {/* Roteiro Orientativo */}
@@ -689,15 +912,15 @@ export const Vozes: React.FC<VozesProps> = ({
               gap: '6px',
             }}>
               <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Texto Sugerido Para Ler em Voz Alta (30 segundos):
+                Texto Sugerido Para Ler em Voz Alta (Caso vá gravar):
               </span>
               <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.6, fontStyle: 'italic' }}>
-                "A leitura expande os horizontes da imaginação e transforma histórias em experiências inesquecíveis. Quando leio com atenção e calma, cada palavra ganha ritmo, entonação e vida própria."
+                "No silêncio das páginas, as histórias ganham alma e voz própria. A leitura com pausas calculadas e entonação profunda nos conduz a um estado de atenção e presença absoluta."
               </p>
             </div>
 
             {/* Opções de Gravação & Upload */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '20px' }}>
               {/* Opção A: Gravar pelo Microfone */}
               <div style={{
                 padding: '24px',
@@ -721,17 +944,16 @@ export const Vozes: React.FC<VozesProps> = ({
                   justifyContent: 'center',
                   color: isRecording ? '#ef4444' : '#10b981',
                   border: isRecording ? '2px solid #ef4444' : '1px solid rgba(16, 185, 129, 0.3)',
-                  animation: isRecording ? 'pulse 1.5s infinite' : 'none',
                 }}>
                   {isRecording ? <Radio size={28} /> : <Mic2 size={28} />}
                 </div>
 
                 <div>
                   <h4 style={{ fontSize: '15px', fontWeight: 800, color: '#f8fafc' }}>
-                    {isRecording ? `Gravando... ${recordingSeconds}s` : 'Gravar com o Microfone'}
+                    {isRecording ? `Gravando... ${recordingSeconds}s` : 'Gravar com Microfone'}
                   </h4>
                   <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                    {isRecording ? 'Fale de forma clara e natural' : 'Clique no botão abaixo para começar'}
+                    {isRecording ? 'Fale com clareza e ritmo pausado' : 'Clique para começar sua amostra'}
                   </p>
                 </div>
 
@@ -750,6 +972,7 @@ export const Vozes: React.FC<VozesProps> = ({
                       fontSize: '12px',
                       fontWeight: 800,
                       textTransform: 'uppercase',
+                      cursor: 'pointer',
                     }}
                   >
                     <Square size={14} />
@@ -771,6 +994,7 @@ export const Vozes: React.FC<VozesProps> = ({
                       fontWeight: 800,
                       textTransform: 'uppercase',
                       boxShadow: '0 6px 15px rgba(16, 185, 129, 0.3)',
+                      cursor: 'pointer',
                     }}
                   >
                     <Mic2 size={14} />
@@ -819,10 +1043,10 @@ export const Vozes: React.FC<VozesProps> = ({
 
                 <div>
                   <h4 style={{ fontSize: '15px', fontWeight: 800, color: '#f8fafc' }}>
-                    {uploadedFile ? uploadedFile.name : 'Ou Subir Arquivo de Áudio'}
+                    {uploadedFile ? uploadedFile.name : 'Subir Arquivo de Áudio'}
                   </h4>
                   <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                    Formatos suportados: .wav, .mp3, .m4a (até 20MB)
+                    Formatos suportados: .wav, .mp3, .m4a (até 25MB)
                   </p>
                 </div>
 
@@ -834,12 +1058,12 @@ export const Vozes: React.FC<VozesProps> = ({
                   padding: '4px 10px',
                   borderRadius: '8px',
                 }}>
-                  {uploadedFile ? 'Arquivo Selecionado' : 'Clique Para Procurar'}
+                  {uploadedFile ? 'Arquivo Selecionado ✓' : 'Clique Para Escolher o Arquivo'}
                 </span>
               </div>
             </div>
 
-            {/* Preview do Áudio Gravado */}
+            {/* Preview do Áudio Gravado/Subido */}
             {audioUrl && (
               <div style={{
                 padding: '16px 20px',
@@ -855,7 +1079,7 @@ export const Vozes: React.FC<VozesProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <CheckCircle2 size={18} color="#10b981" />
                   <span style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc' }}>
-                    Amostra de voz capturada com sucesso!
+                    Amostra de áudio pronta para calibração!
                   </span>
                 </div>
 
@@ -865,10 +1089,10 @@ export const Vozes: React.FC<VozesProps> = ({
 
             {/* Configurações da Voz Clonada */}
             <h3 style={{ fontSize: '18px', fontWeight: 900, color: '#f8fafc', textTransform: 'uppercase', marginTop: '8px' }}>
-              2. Personalize Seu Clone de Voz
+              2. Calibre a Afinação Grave & Espaçamento da Narração
             </h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '20px' }}>
               {/* Nome */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
@@ -878,7 +1102,7 @@ export const Vozes: React.FC<VozesProps> = ({
                   type="text"
                   value={voiceName}
                   onChange={(e) => setVoiceName(e.target.value)}
-                  placeholder="Ex: Minha Voz - Alexandre"
+                  placeholder="Ex: Narrador Filosófico Grave"
                   style={{
                     padding: '12px 16px',
                     borderRadius: '12px',
@@ -893,7 +1117,7 @@ export const Vozes: React.FC<VozesProps> = ({
               {/* Gênero */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
-                  Gênero
+                  Gênero do Locutor
                 </label>
                 <select
                   value={gender}
@@ -929,10 +1153,83 @@ export const Vozes: React.FC<VozesProps> = ({
                     fontSize: '14px',
                   }}
                 >
-                  <option value="Dramático & Suspense">Dramático & Suspense (Imersivo)</option>
-                  <option value="Narrador Cinematográfico">Narrador Cinematográfico (Trailer)</option>
-                  <option value="Calmo & Reflexivo">Calmo & Reflexivo (Não-ficção)</option>
-                  <option value="Dinâmico & Moderno">Dinâmico & Moderno (Artigos & Negócios)</option>
+                  <option value="Grave & Solene (Cid Moreira)">Grave & Solene (Cid Moreira)</option>
+                  <option value="Espaçoso & Reflexivo (Zen)">Espaçoso & Reflexivo (Zen / Filosofia)</option>
+                  <option value="Dramático & Suspense">Dramático & Suspense (Mistério)</option>
+                  <option value="Cinema & Trailer">Cinema & Trailer (Blockbuster)</option>
+                  <option value="Suave & Noturno">Suave & Noturno (Aconchegante)</option>
+                </select>
+              </div>
+
+              {/* Afinação / Gravidade (Pitch) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                  Afinação / Tom da Voz (Pitch)
+                </label>
+                <select
+                  value={pitchAdjustment}
+                  onChange={(e) => setPitchAdjustment(e.target.value)}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    background: 'var(--bg-surface-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                    color: '#f8fafc',
+                    fontSize: '14px',
+                  }}
+                >
+                  <option value="-12Hz">🎙️ Ultra-Grave (Cid Moreira™ -12Hz)</option>
+                  <option value="-8Hz">🎙️ Barítono Profundo (-8Hz)</option>
+                  <option value="-4Hz">🎙️ Grave Médio Ponderado (-4Hz)</option>
+                  <option value="+0Hz">✨ Tom Natural (0Hz)</option>
+                  <option value="+3Hz">🌟 Tom Suave Mais Agudo (+3Hz)</option>
+                </select>
+              </div>
+
+              {/* Cadência / Espaçamento (Pausas) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                  Espaçamento & Cadência de Fala
+                </label>
+                <select
+                  value={cadenceChoice}
+                  onChange={(e) => setCadenceChoice(e.target.value as any)}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    background: 'var(--bg-surface-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                    color: '#f8fafc',
+                    fontSize: '14px',
+                  }}
+                >
+                  <option value="espacosa">🧘 Espaçosa & Lenta (Com Pausas de Respiração e Reflexão)</option>
+                  <option value="dramatica">🎭 Dramática & Suspense (Tensão e Mistério)</option>
+                  <option value="natural">📖 Fluida Natural (Audiolivro Padrão)</option>
+                </select>
+              </div>
+
+              {/* Voz Base de Modulação */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+                  Matriz Neural Base
+                </label>
+                <select
+                  value={baseVoiceChoice}
+                  onChange={(e) => setBaseVoiceChoice(e.target.value)}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    background: 'var(--bg-surface-elevated)',
+                    border: '1px solid var(--border-subtle)',
+                    color: '#f8fafc',
+                    fontSize: '14px',
+                  }}
+                >
+                  <option value="pt-BR-AntonioNeural">Antônio Neural (Masculina Profunda)</option>
+                  <option value="pt-BR-FranciscaNeural">Francisca Neural (Feminina Expressiva)</option>
+                  <option value="en-US-BrianMultilingualNeural">Brian Multilingual (Barítono Cinema)</option>
+                  <option value="pt-BR-ThalitaMultilingualNeural">Thalita Multilingual (Fluida & Clara)</option>
                 </select>
               </div>
             </div>
@@ -992,17 +1289,18 @@ export const Vozes: React.FC<VozesProps> = ({
                 opacity: isCloning || !audioBlob ? 0.6 : 1,
                 boxShadow: '0 10px 25px rgba(16, 185, 129, 0.35)',
                 cursor: isCloning || !audioBlob ? 'not-allowed' : 'pointer',
+                transition: 'all 200ms',
               }}
             >
               {isCloning ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  <span>Processando Amostra e Clonando com IA...</span>
+                  <span>Configurando Voz e Calibrando Afinação...</span>
                 </>
               ) : (
                 <>
                   <Sparkles size={18} />
-                  <span>Duplicar e Ativar Minha Voz no Leitor</span>
+                  <span>Salvar Voz Personalizada e Ativar no Leitor</span>
                 </>
               )}
             </button>

@@ -1,6 +1,6 @@
-# Configurações do Sistema e Regras de Negócio do ElevenReader
+# Configurações do Sistema e Regras de Negócio do Aedolia
 
-SYSTEM_NAME = "ElevenReader"
+SYSTEM_NAME = "Aedolia"
 SYSTEM_VERSION = "2.0.0"
 
 # Planos e Limites
@@ -13,14 +13,14 @@ PLAN_TIERS = {
         "audio_quality": "standard",
     },
     "pro": {
-        "name": "ElevenReader PRO",
+        "name": "Aedolia PRO",
         "max_books": 999999,
         "daily_words_limit": 999999,
         "has_ai_chat": True,
         "audio_quality": "neural_high_definition",
     },
     "unlimited": {
-        "name": "ElevenReader Vitalício / Empresarial",
+        "name": "Aedolia Vitalício / Empresarial",
         "max_books": 999999,
         "daily_words_limit": 999999,
         "has_ai_chat": True,

@@ -12,21 +12,29 @@ else:
     load_dotenv()
 
 class Settings:
-    """Configurações centrais do sistema ElevenReader."""
+    """Configurações centrais do sistema Aedolia."""
     PORT: int = int(os.getenv("PORT", "5000"))
     HOST: str = os.getenv("HOST", "0.0.0.0")
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
-    # Supabase Credentials (lidas de variáveis de ambiente do .env)
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
-    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    # Senhas e chaves vêm só do .env (backend/.env local; na VPS, backend.env). Nunca escrever no código.
 
-    # ElevenLabs API Key (Opcional - para síntese de áudio neural avançada no backend)
-    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+    # MariaDB (VPS 2.25.124.5 / túnel SSH)
+    DB_HOST: str = os.getenv("DB_HOST", "127.0.0.1")
+    DB_PORT: int = int(os.getenv("DB_PORT", "3306"))
+    DB_USER: str = os.getenv("DB_USER", "")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
+    DB_NAME: str = os.getenv("DB_NAME", "")
 
-    # Webhook Secret Token (para autenticar chamadas do n8n ou gateways)
-    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "elevenreader_secure_token_2026")
+    # MinIO S3 (VPS Traefik)
+    MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "cell-s3.iagtp.com.br")
+    MINIO_ROOT_USER: str = os.getenv("MINIO_ROOT_USER", "")
+    MINIO_ROOT_PASSWORD: str = os.getenv("MINIO_ROOT_PASSWORD", "")
+    MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "ebook-readers-gtp")
+    MINIO_SECURE: bool = os.getenv("MINIO_SECURE", "true").lower() == "true"
+
+    # Token do webhook de pagamento (n8n ou gateway)
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "")
 
     # Uploads dir
     UPLOAD_DIR: Path = _BASE_DIR / "uploads"

@@ -1,6 +1,6 @@
-# 🏛️ Arquitetura do Backend - ElevenReader
+# 🏛️ Arquitetura do Backend - Aedolia
 
-O backend do ElevenReader segue o mesmo padrão modular corporativo adotado no projeto `GTP-TESTE-SISTEMA`, com separação estrita de responsabilidades e integração com o Supabase.
+O backend do Aedolia segue o mesmo padrão modular corporativo adotado no projeto `GTP-TESTE-SISTEMA`, com separação estrita de responsabilidades e integração com MariaDB e MinIO S3 na VPS.
 
 ---
 
@@ -11,25 +11,23 @@ backend/
 ├── components/                      # Componentes modulares independentes
 │   ├── ProcessadorLivros/python/    # Extração de texto de PDF, capítulos e frases
 │   ├── GestaoAssinaturas/python/    # Processamento de webhooks e ativação de planos
-│   ├── SinteseVoz/python/           # Catálogo de vozes e integração ElevenLabs
+│   ├── SinteseVoz/python/           # Catálogo de vozes, clonagem e neural_tts
 │   ├── AssistenteIA/python/         # Respostas contextuais sobre os livros
 │   └── AlertasErro/python/          # Monitoramento de integridade e logs
 ├── shared/                          # Módulos compartilhados entre componentes
 │   └── python/
 │       ├── config.py                # Gerenciamento de variáveis de ambiente
-│       ├── database.py              # Camada de acesso ao Supabase (PostgreSQL & Storage)
+│       ├── database.py              # Camada de acesso ao MariaDB
+│       ├── mariadb_client.py        # Driver DictCursor com reconexão resiliente
+│       ├── minio_storage.py         # Cliente MinIO S3 (upload, download e streaming)
 │       └── system_config.py         # Constantes, planos, limites e intervalos
 ├── scripts/                         # Utilitários operacionais
-│   ├── init_supabase.py             # Validação de conexão e storage
+│   ├── init_database.py             # Validação de conexão MariaDB e MinIO
 │   └── test_webhook.py              # Teste de disparo de webhooks
 ├── docs/                            # Documentação técnica do sistema
 ├── uploads/                         # Armazenamento temporário de arquivos
 ├── api_server.py                    # Servidor Flask com rotas HTTP e CORS
-├── main.py                          # Motor de automações com APScheduler e logging
-├── schema.sql                       # Schema do banco de dados (tabelas, triggers, RLS)
-├── Dockerfile                       # Container Docker para deploy
-├── entrypoint.sh                    # Script de inicialização do container
-├── pyrightconfig.json               # Configuração do analisador de tipos
+├── schema_mariadb.sql               # Schema do banco de dados MariaDB
 ├── README.md                        # Guia de instalação e execução
 └── requirements.txt                 # Dependências Python
 ```
@@ -38,10 +36,10 @@ backend/
 
 ## 🔄 Fluxo de Dados e Integrações
 
-1. **Frontend -> Backend/Supabase**:
-   - Autenticação e sessão gerenciadas via Supabase Auth (`@supabase/supabase-js`).
-   - Leitura de PDFs salva no Supabase Storage (`pdf-uploads`).
-   - Sincronização de progresso de leitura entre dispositivos.
+1. **Frontend -> Backend/MariaDB/MinIO**:
+   - Autenticação e sessão gerenciadas via MariaDB (`users` com hash SHA-256).
+   - Leitura de PDFs salva no MinIO S3 (`ebook-readers-gtp`).
+   - Sincronização de progresso de leitura entre dispositivos na tabela `reading_progress`.
 
 2. **n8n / Gateways de Pagamento (Kiwify, Hotmart, Asaas, Stripe) -> Backend**:
    - Webhook recebido em `POST /api/webhooks/payment`.

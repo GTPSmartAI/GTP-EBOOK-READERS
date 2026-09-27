@@ -1,41 +1,65 @@
 import React, { useState } from 'react';
-import { X, Play, Check, Heart, Plus, Volume2 } from 'lucide-react';
+import { X, Play, Check, Heart, Plus, Volume2, Sparkles } from 'lucide-react';
 import type { VoiceOption } from '../types';
-import { ELEVEN_VOICES } from '../data/voices';
+import { VOICES } from '../data/voices';
 import { speechEngine } from '../services/speechEngine';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface VoicePickerModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedVoice: VoiceOption;
   onSelectVoice: (voice: VoiceOption) => void;
+  /** Plano PRO: libera as vozes premium (no grátis elas aparecem com cadeado) */
+  isProUser?: boolean;
   onNavigateToCloner?: () => void;
 }
+
+// Abas por idioma: cada voz fala um idioma só
+type TabType = 'pt-BR' | 'pt-PT' | 'en' | 'es' | 'created' | 'favorites';
+
+const LANGUAGE_TABS: { id: TabType; label: string }[] = [
+  { id: 'pt-BR', label: '🇧🇷 Português' },
+  { id: 'pt-PT', label: '🇵🇹 Portugal' },
+  { id: 'en', label: '🇺🇸 Inglês' },
+  { id: 'es', label: '🇪🇸 Espanhol' },
+  { id: 'created', label: 'Minhas ✨' },
+  { id: 'favorites', label: 'Favoritas ❤️' },
+];
+
+const tabForLanguage = (lang: string | undefined): TabType => {
+  if (!lang) return 'pt-BR';
+  if (lang.startsWith('en')) return 'en';
+  if (lang.startsWith('es')) return 'es';
+  return lang === 'pt-PT' ? 'pt-PT' : 'pt-BR';
+};
 
 export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
   isOpen,
   onClose,
   selectedVoice,
   onSelectVoice,
+  isProUser = false,
   onNavigateToCloner,
 }) => {
-  const [activeTab, setActiveTab] = useState<'recent' | 'favorites' | 'explore' | 'created'>('recent');
+  const [activeTab, setActiveTab] = useState<TabType>(() => tabForLanguage(selectedVoice?.lang));
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  useEscapeKey(isOpen, onClose);
 
   // Vozes favoritas salvas
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('gtp_favorite_voices');
-      return saved ? JSON.parse(saved) : ['francisca-dramatica', 'antonio-suspense', 'cid-moreira-legend'];
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return ['francisca-dramatica', 'antonio-suspense'];
+      return [];
     }
   });
 
   const toggleFavorite = (e: React.MouseEvent, voiceId: string) => {
     e.stopPropagation();
-    setFavoriteIds((prev) => {
-      const next = prev.includes(voiceId) ? prev.filter((id) => id !== voiceId) : [...prev, voiceId];
+    setFavoriteIds((prev: string[]) => {
+      const next = prev.includes(voiceId) ? prev.filter((id: string) => id !== voiceId) : [...prev, voiceId];
       localStorage.setItem('gtp_favorite_voices', JSON.stringify(next));
       return next;
     });
@@ -44,10 +68,9 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
   const handlePreview = (e: React.MouseEvent, voice: VoiceOption) => {
     e.stopPropagation();
     setPreviewingId(voice.id);
-    speechEngine.previewVoice(voice);
-    setTimeout(() => {
-      setPreviewingId(null);
-    }, 4500);
+    speechEngine.previewVoice(voice).finally(() => {
+      setPreviewingId((current) => (current === voice.id ? null : current));
+    });
   };
 
   if (!isOpen) return null;
@@ -62,30 +85,16 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
     }
   })();
 
-  // Voz especial Cid Moreira (Lenda brasileira de narração dramática)
-  const cidMoreiraVoice: VoiceOption = {
-    id: 'cid-moreira-legend',
-    name: 'Cid Moreira™',
-    gender: 'male',
-    lang: 'pt-BR',
-    accent: 'Brasil (Voz Lendária & Profunda)',
-    tag: 'Brazilian Legend & Dramatic Narrator',
-    description: 'Tom icônico, solene e comovente. Ideal para suspense, mistério, história e ficção épica.',
-    samplePhrase: 'No princípio era o verbo... e as trevas cobriam a face do abismo.',
-    avatarColor: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
-    stability: 0.95,
-    clarity: 0.98,
-    speed: 0.95,
-  };
+  const allVoicesList = [...clonedVoices, ...VOICES];
 
-  const allVoicesList = [cidMoreiraVoice, ...clonedVoices, ...ELEVEN_VOICES];
-
-  const displayedVoices = allVoicesList.filter((v) => {
-    if (activeTab === 'favorites') return favoriteIds.includes(v.id);
-    if (activeTab === 'created') return clonedVoices.some((c) => c.id === v.id);
-    if (activeTab === 'recent') return true;
-    return true; // explore
-  });
+  const displayedVoices = allVoicesList
+    .filter((v) => {
+      if (activeTab === 'favorites') return favoriteIds.includes(v.id);
+      if (activeTab === 'created') return clonedVoices.some((c) => c.id === v.id);
+      return !v.isCloned && tabForLanguage(v.lang) === activeTab;
+    })
+    // No grátis as vozes liberadas vêm primeiro; no PRO, as premium
+    .sort((a, b) => (a.tier === b.tier ? 0 : (a.tier === 'premium') === isProUser ? -1 : 1));
 
   return (
     <div style={{
@@ -94,9 +103,9 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
       zIndex: 120,
       display: 'flex',
       justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0, 0, 0, 0.65)',
-      backdropFilter: 'blur(8px)',
-      WebkitBackdropFilter: 'blur(8px)',
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
       transition: 'opacity 250ms ease',
     }}>
       {/* Backdrop clicável para fechar */}
@@ -105,14 +114,14 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
         style={{ flex: 1, cursor: 'pointer' }} 
       />
 
-      {/* Drawer Lateral Direito */}
+      {/* Drawer Lateral Direito Soft & Bold Cyber-Dark */}
       <div style={{
         width: '100%',
-        maxWidth: '430px',
+        maxWidth: '460px',
         height: '100%',
         background: '#090d16',
         borderLeft: '1px solid rgba(255, 255, 255, 0.12)',
-        boxShadow: '-10px 0 35px rgba(0, 0, 0, 0.7)',
+        boxShadow: '-10px 0 35px rgba(0, 0, 0, 0.8)',
         display: 'flex',
         flexDirection: 'column',
         zIndex: 130,
@@ -126,14 +135,20 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
           justifyContent: 'space-between',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
         }}>
-          <h2 style={{
-            fontSize: '18px',
-            fontWeight: 800,
-            color: '#f8fafc',
-            letterSpacing: '-0.02em',
-          }}>
-            Voices
-          </h2>
+          <div>
+            <h2 style={{
+              fontSize: '18px',
+              fontWeight: 900,
+              color: '#f8fafc',
+              letterSpacing: '-0.02em',
+              textTransform: 'uppercase',
+            }}>
+              Vozes & Narradores
+            </h2>
+            <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+              A voz escolhida aqui é a da narração
+            </p>
+          </div>
 
           <button
             onClick={onClose}
@@ -155,35 +170,33 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
           </button>
         </div>
 
-        {/* Abas em Pílula (Recent | Favorites | Explore | Created) */}
+        {/* Abas em Pílula (Filtros: Todas | Graves 🎙️ | Espaçosas 🧘 | Cinema 🎬 | Criadas | Favoritas) */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
-          padding: '12px 24px',
+          padding: '12px 20px',
           borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
           background: 'rgba(255, 255, 255, 0.02)',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
         }}>
-          {[
-            { id: 'recent', label: 'Recent' },
-            { id: 'favorites', label: 'Favorites' },
-            { id: 'explore', label: 'Explore' },
-            { id: 'created', label: 'Created' },
-          ].map((tab) => {
+          {LANGUAGE_TABS.map((tab) => {
             const isSelected = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id)}
                 style={{
-                  padding: '6px 14px',
+                  padding: '5px 12px',
                   borderRadius: '9999px',
-                  fontSize: '12px',
-                  fontWeight: isSelected ? 800 : 500,
-                  background: isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
-                  color: isSelected ? '#000000' : '#94a3b8',
-                  border: isSelected ? '1px solid #ffffff' : '1px solid rgba(255, 255, 255, 0.08)',
+                  fontSize: '11px',
+                  fontWeight: isSelected ? 800 : 600,
+                  background: isSelected ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
+                  color: isSelected ? '#ffffff' : '#94a3b8',
+                  border: isSelected ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.08)',
                   cursor: 'pointer',
+                  whiteSpace: 'nowrap',
                   transition: 'all 150ms ease',
                 }}
               >
@@ -202,7 +215,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
           flexDirection: 'column',
           gap: '16px',
         }}>
-          {/* Card de Ação: Create New Voice */}
+          {/* Card de Ação: Create / Subir Nova Voz */}
           <div>
             <span style={{
               fontSize: '10px',
@@ -213,7 +226,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
               display: 'block',
               marginBottom: '8px',
             }}>
-              Design your own narrator
+              Personalização & Duplicador
             </span>
 
             <button
@@ -227,7 +240,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                 alignItems: 'center',
                 gap: '12px',
                 padding: '12px 16px',
-                borderRadius: '14px',
+                borderRadius: '16px',
                 background: 'rgba(16, 185, 129, 0.08)',
                 border: '1px dashed rgba(16, 185, 129, 0.4)',
                 color: '#f8fafc',
@@ -237,42 +250,53 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
               }}
             >
               <div style={{
-                width: '36px',
-                height: '36px',
+                width: '38px',
+                height: '38px',
                 borderRadius: '50%',
-                background: '#10b981',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                 color: '#ffffff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontWeight: 900,
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
               }}>
                 <Plus size={18} />
               </div>
-              <div>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc', display: 'block' }}>
-                  Create new voice
-                </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc' }}>
+                    Subir ou Gravar Nova Voz
+                  </span>
+                  <Sparkles size={12} color="#34d399" />
+                </div>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  Clone sua própria voz ou crie um narrador exclusivo
+                  Envie áudio MP3/WAV ou use o microfone para criar narradores
                 </span>
               </div>
             </button>
           </div>
 
-          {/* Subtítulo: Recent voices */}
+          {/* Subtítulo da Lista */}
           <div>
-            <span style={{
-              fontSize: '10px',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: '#64748b',
-              display: 'block',
-              marginBottom: '10px',
-            }}>
-              {activeTab === 'favorites' ? 'Vozes Favoritas' : activeTab === 'created' ? 'Vozes Criadas por Você' : 'Recent voices'}
-            </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                color: '#64748b',
+              }}>
+                {activeTab === 'favorites'
+                  ? 'Vozes Favoritas'
+                  : activeTab === 'created'
+                  ? 'Vozes Criadas por Você'
+                  : `Vozes em ${LANGUAGE_TABS.find((t) => t.id === activeTab)?.label.replace(/^\S+\s/, '')}`}
+              </span>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>
+                {displayedVoices.length} disponíveis
+              </span>
+            </div>
 
             {/* Lista de Vozes */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -280,6 +304,9 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                 const isSelected = selectedVoice.id === voice.id;
                 const isFav = favoriteIds.includes(voice.id);
                 const isPreviewing = previewingId === voice.id;
+
+                const isPremium = voice.tier === 'premium';
+                const isBasic = voice.tier === 'basic';
 
                 return (
                   <div
@@ -290,9 +317,9 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '12px 14px',
-                      borderRadius: '14px',
+                      borderRadius: '16px',
                       background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-                      border: isSelected ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                      border: isSelected ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(255, 255, 255, 0.06)',
                       cursor: 'pointer',
                       transition: 'all 150ms ease',
                     }}
@@ -328,6 +355,34 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                           }}>
                             {voice.name}
                           </span>
+
+                          {/* Badges de estilo */}
+                          {isPremium && (
+                            <span style={{
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: 'rgba(245, 158, 11, 0.18)',
+                              color: '#fbbf24',
+                              border: '1px solid rgba(245, 158, 11, 0.35)',
+                            }}>
+                              {isProUser ? '★ PRO' : '🔒 PRO'}
+                            </span>
+                          )}
+                          {isBasic && (
+                            <span style={{
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: 'rgba(148, 163, 184, 0.12)',
+                              color: '#94a3b8',
+                              border: '1px solid rgba(148, 163, 184, 0.25)',
+                            }}>
+                              GRÁTIS
+                            </span>
+                          )}
                         </div>
                         <span style={{
                           fontSize: '11px',
@@ -335,6 +390,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
+                          marginTop: '1px',
                         }}>
                           {voice.tag || voice.accent}
                         </span>
@@ -356,6 +412,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                           alignItems: 'center',
                           justifyContent: 'center',
                           cursor: 'pointer',
+                          transition: 'all 120ms',
                         }}
                         title="Ouvir amostra de voz"
                       >

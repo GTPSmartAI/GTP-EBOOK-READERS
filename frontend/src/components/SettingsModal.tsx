@@ -1,4 +1,5 @@
 import React from 'react';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { X, Moon, Sun, Book, Monitor, Type } from 'lucide-react';
 import type { ReaderSettings, ThemeMode, FontFamily } from '../types';
 
@@ -15,6 +16,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onUpdateSettings,
 }) => {
+  useEscapeKey(isOpen, onClose);
   if (!isOpen) return null;
 
   const themes: { id: ThemeMode; label: string; icon: React.ReactNode; bg: string; color: string }[] = [

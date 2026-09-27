@@ -10,6 +10,11 @@ pnpm-debug.log*
 dist/
 frontend/dist/
 dist-ssr/
+# APKs gerados e chave de assinatura do Android (nunca versionar a chave)
+apk/
+*.keystore
+*.jks
+frontend/android/keystore.properties
 *.local
 
 # Python & Ambientes Virtuais
@@ -46,6 +51,10 @@ backend/uploads/audio_cache/*
 backend/uploads/cloned_samples/*
 backend/uploads/*.pdf
 backend/uploads/*.txt
+# Livros enviados, texto extraído e vozes personalizadas (dados gerados em runtime)
+backend/uploads/books/
+backend/uploads/extracted/
+backend/uploads/custom_voices.json
 !backend/uploads/.gitkeep
 !backend/uploads/audio_cache/.gitkeep
 !backend/uploads/cloned_samples/.gitkeep
@@ -61,3 +70,6 @@ backend/.env
 .idea/
 .DS_Store
 Thumbs.db
+
+# Modelos de voz (baixados pelo Dockerfile; localmente em backend/models/piper)
+backend/models/

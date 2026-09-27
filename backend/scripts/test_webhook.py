@@ -7,7 +7,7 @@ def test_payment_webhook():
     
     mock_payload = {
         "event": "order_approved",
-        "email": "leitor.teste@elevenreader.com",
+        "email": "leitor.teste@exemplo.com",
         "plan": "pro_monthly",
         "amount": 29.90,
         "status": "paid",
@@ -15,7 +15,7 @@ def test_payment_webhook():
         "order_id": f"ord_{int(time.time())}",
         "customer": {
             "name": "Leitor Teste",
-            "email": "leitor.teste@elevenreader.com"
+            "email": "leitor.teste@exemplo.com"
         }
     }
 

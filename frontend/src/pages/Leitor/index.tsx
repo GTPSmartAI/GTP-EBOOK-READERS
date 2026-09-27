@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
-  BookOpen, 
-  FileText, 
+  BookOpen,
   MessageSquare, 
   Bookmark, 
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight
+  ArrowLeft
 } from 'lucide-react';
 import type { Book, ReaderSettings } from '../../types';
 import { ReaderView } from '../../components/ReaderView';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface LeitorPageProps {
   book: Book | null | undefined;
   currentSentenceIndex: number;
   settings: ReaderSettings;
+  isTheatreMode?: boolean;
+  onOpenCastModal?: () => void;
   onSentenceClick: (sentenceIndex: number) => void;
   onPlayChapter: (startIndex: number) => void;
   onWordClick?: (sentenceIndex: number, wordIndex: number, word: string) => void;
@@ -22,12 +22,16 @@ interface LeitorPageProps {
   onOpenAIChat: () => void;
   onBackToPainel: () => void;
   onOpenUpload?: () => void;
+  contentLoad?: { progress: number; failed: boolean } | null;
+  onRetryContent?: () => void;
 }
 
 export const Leitor: React.FC<LeitorPageProps> = ({
   book,
   currentSentenceIndex,
   settings,
+  isTheatreMode = false,
+  onOpenCastModal,
   onSentenceClick,
   onPlayChapter,
   onWordClick,
@@ -35,9 +39,10 @@ export const Leitor: React.FC<LeitorPageProps> = ({
   onOpenAIChat,
   onBackToPainel,
   onOpenUpload,
+  contentLoad,
+  onRetryContent,
 }) => {
-  const [viewMode, setViewMode] = useState<'flow' | 'pdf'>('flow');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const isMobile = useIsMobile();
 
   if (!book) {
     return (
@@ -131,7 +136,50 @@ export const Leitor: React.FC<LeitorPageProps> = ({
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Sub-header de Ações do Leitor */}
+      {/* Celular: ações em ícones com rótulo curto, todas cabem na largura da tela */}
+      {isMobile ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: '6px',
+          padding: '6px 10px',
+          background: 'var(--bg-surface)',
+          borderBottom: '1px solid var(--border-subtle)',
+          flexShrink: 0,
+        }}>
+          {[
+            { key: 'back', icon: <ArrowLeft size={18} />, label: 'Painel', onClick: onBackToPainel, active: false },
+            ...(onOpenCastModal
+              ? [{ key: 'cast', icon: <span style={{ fontSize: '16px', lineHeight: 1 }}>🎭</span>, label: isTheatreMode ? 'Vozes ON' : 'Vozes', onClick: onOpenCastModal, active: isTheatreMode }]
+              : []),
+            { key: 'chapters', icon: <Bookmark size={18} />, label: 'Capítulos', onClick: onOpenChapters, active: false },
+            { key: 'ai', icon: <MessageSquare size={18} />, label: 'Perguntar', onClick: onOpenAIChat, active: false },
+          ].map((action) => (
+            <button
+              key={action.key}
+              onClick={action.onClick}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '3px',
+                padding: '6px 2px',
+                borderRadius: '10px',
+                background: action.active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: action.active ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--border-subtle)',
+                color: action.active ? '#10b981' : '#cbd5e1',
+                fontSize: '11px',
+                fontWeight: 700,
+              }}
+            >
+              {action.icon}
+              <span>{action.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
       <div style={{
         height: '48px',
         minHeight: '48px',
@@ -158,53 +206,44 @@ export const Leitor: React.FC<LeitorPageProps> = ({
           <span>Voltar ao Painel</span>
         </button>
 
-        {/* View Mode Toggle */}
-        <div style={{
-          display: 'flex',
-          background: 'rgba(255, 255, 255, 0.04)',
-          borderRadius: '10px',
-          padding: '2px',
-          border: '1px solid var(--border-subtle)',
-        }}>
-          <button
-            onClick={() => setViewMode('flow')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '8px',
-              fontSize: '11px',
-              fontWeight: 700,
-              background: viewMode === 'flow' ? '#10b981' : 'transparent',
-              color: viewMode === 'flow' ? '#ffffff' : '#94a3b8',
-            }}
-          >
-            <BookOpen size={13} />
-            <span>Leitura Fluida</span>
-          </button>
-
-          <button
-            onClick={() => setViewMode('pdf')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '8px',
-              fontSize: '11px',
-              fontWeight: 700,
-              background: viewMode === 'pdf' ? '#10b981' : 'transparent',
-              color: viewMode === 'pdf' ? '#ffffff' : '#94a3b8',
-            }}
-          >
-            <FileText size={13} />
-            <span>Documento Original</span>
-          </button>
-        </div>
-
         {/* Ferramentas do Leitor */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {onOpenCastModal && (
+            <button
+              onClick={onOpenCastModal}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 12px',
+                borderRadius: '8px',
+                background: isTheatreMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: isTheatreMode ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--border-subtle)',
+                color: isTheatreMode ? '#10b981' : '#cbd5e1',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+              title="Configurar vozes dos personagens (Áudio-Teatro)"
+            >
+              <span>🎭</span>
+              <span>Vozes do livro</span>
+              {isTheatreMode && (
+                <span style={{
+                  fontSize: '9px',
+                  background: '#10b981',
+                  color: '#000000',
+                  fontWeight: 900,
+                  padding: '1px 5px',
+                  borderRadius: '9999px',
+                  textTransform: 'uppercase',
+                }}>
+                  ON
+                </span>
+              )}
+            </button>
+          )}
+
           <button
             onClick={onOpenChapters}
             style={{
@@ -244,8 +283,9 @@ export const Leitor: React.FC<LeitorPageProps> = ({
           </button>
         </div>
       </div>
+      )}
 
-      {/* Viewport Principal com Barra Lateral Esquerda de Capítulos */}
+      {/* Viewport Principal (capítulos ficam no botão Capítulos do topo) */}
       <div style={{
         flex: 1,
         display: 'flex',
@@ -254,180 +294,6 @@ export const Leitor: React.FC<LeitorPageProps> = ({
         overflow: 'hidden',
         position: 'relative',
       }}>
-        {/* Barra Lateral de Capítulos (Colapsável) */}
-        <aside style={{
-          width: isSidebarOpen ? '280px' : '0px',
-          minWidth: isSidebarOpen ? '280px' : '0px',
-          background: 'rgba(10, 15, 29, 0.95)',
-          borderRight: isSidebarOpen ? '1px solid var(--border-subtle)' : 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          transition: 'all 250ms cubic-bezier(0.4, 0, 0.2, 1)',
-          overflow: 'hidden',
-          zIndex: 20,
-        }}>
-          {/* Header da Sidebar de Capítulos */}
-          <div style={{
-            padding: '16px 18px',
-            borderBottom: '1px solid var(--border-subtle)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'rgba(15, 23, 42, 0.6)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Bookmark size={15} color="#10b981" />
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 900,
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                color: '#f8fafc',
-              }}>
-                Capítulos ({book.chapters.length})
-              </span>
-            </div>
-
-            <button
-              onClick={() => setIsSidebarOpen(false)}
-              style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '8px',
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                color: '#94a3b8',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              title="Minimizar barra de capítulos"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          </div>
-
-          {/* Lista de Capítulos com Rolagem Limpa */}
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '8px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '2px',
-          }}>
-            {book.chapters.map((ch, idx) => {
-              const nextChapter = book.chapters[idx + 1];
-              const isCurrentChapter = currentSentenceIndex >= ch.startIndex && 
-                (!nextChapter || currentSentenceIndex < nextChapter.startIndex);
-
-              return (
-                <button
-                  key={ch.id || `ch-${idx}`}
-                  onClick={() => {
-                    onPlayChapter(ch.startIndex);
-                    setTimeout(() => {
-                      const chapterEl = document.getElementById(`chapter-anchor-${ch.startIndex}`) ||
-                                        document.getElementById(`sentence-anchor-${ch.startIndex}`);
-                      if (chapterEl) {
-                        chapterEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }
-                    }, 50);
-                  }}
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: '10px',
-                    textAlign: 'left',
-                    background: isCurrentChapter ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-                    border: isCurrentChapter ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent',
-                    color: isCurrentChapter ? '#10b981' : '#94a3b8',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px',
-                    transition: 'all 150ms ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isCurrentChapter) {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
-                      e.currentTarget.style.color = '#f1f5f9';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isCurrentChapter) {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = '#94a3b8';
-                    }
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      color: isCurrentChapter ? '#10b981' : '#64748b',
-                    }}>
-                      Capítulo {idx + 1}
-                    </span>
-                    {isCurrentChapter && (
-                      <span style={{
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        background: '#10b981',
-                        boxShadow: '0 0 8px #10b981',
-                      }} />
-                    )}
-                  </div>
-                  <span style={{
-                    fontSize: '13px',
-                    fontWeight: isCurrentChapter ? 700 : 500,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}>
-                    {ch.title}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
-
-        {/* Botão de Expandir Barra Lateral (quando recolhida) */}
-        {!isSidebarOpen && (
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            style={{
-              position: 'absolute',
-              top: '12px',
-              left: '12px',
-              zIndex: 30,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 12px',
-              borderRadius: '10px',
-              background: 'rgba(15, 23, 42, 0.9)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#f8fafc',
-              fontSize: '11px',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-              cursor: 'pointer',
-            }}
-            title="Expandir barra de capítulos"
-          >
-            <ChevronRight size={15} color="#10b981" />
-            <span>Capítulos</span>
-          </button>
-        )}
-
         {/* Leitor Principal Fluido */}
         <div style={{
           flex: 1,
@@ -441,10 +307,11 @@ export const Leitor: React.FC<LeitorPageProps> = ({
             book={book}
             currentSentenceIndex={currentSentenceIndex}
             settings={settings}
-            viewMode={viewMode}
             onSentenceClick={onSentenceClick}
             onPlayChapter={onPlayChapter}
             onWordClick={onWordClick}
+            contentLoad={contentLoad}
+            onRetryContent={onRetryContent}
           />
         </div>
       </div>

@@ -38,13 +38,13 @@ def process_incoming_payment_webhook(payload: Dict[str, Any]) -> Tuple[bool, str
         tier = "pro" if is_approved else "free"
         subscription_status = "active" if is_approved else "canceled"
 
-        # 1. Atualizar ou verificar perfil no Supabase
+        # 1. Atualizar ou verificar perfil no MariaDB
         profile = get_user_profile(email=email)
         user_updated = False
         if profile:
             user_updated = update_user_subscription(email=email, tier=tier, status=subscription_status)
 
-        # 2. Gravar histórico na tabela de subscriptions do Supabase
+        # 2. Gravar histórico na tabela de subscriptions do MariaDB
         record_subscription_transaction(
             email=email,
             plan=plan,

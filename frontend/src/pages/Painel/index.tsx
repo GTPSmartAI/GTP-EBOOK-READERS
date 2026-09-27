@@ -8,9 +8,11 @@ import {
   ChevronRight, 
   Flame,
   CheckCircle2,
-  Trash2
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import type { Book, VoiceOption } from '../../types';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface PainelProps {
   books: Book[];
@@ -24,6 +26,8 @@ interface PainelProps {
   onPreviewVoice: (voice: VoiceOption) => void;
   onDeleteBook: (bookId: string) => void;
   userName: string;
+  /** Palavras que a voz leu de verdade (estatísticas); null enquanto carrega */
+  wordsReadTotal?: number | null;
 }
 
 export const Painel: React.FC<PainelProps> = ({
@@ -38,10 +42,12 @@ export const Painel: React.FC<PainelProps> = ({
   onPreviewVoice,
   onDeleteBook,
   userName,
+  wordsReadTotal = null,
 }) => {
+  const isMobile = useIsMobile();
   const favoriteVoices = allVoices.filter((v) => favoriteVoiceIds.includes(v.id));
 
-  const totalWordsRead = books.reduce((acc, b) => acc + Math.round((b.totalWords * b.readingProgress) / 100), 0);
+  const totalWordsRead = wordsReadTotal ?? 0;
   const totalBooks = books.length;
   const completedBooks = books.filter((b) => b.readingProgress >= 100).length;
 
@@ -49,20 +55,22 @@ export const Painel: React.FC<PainelProps> = ({
     <div style={{
       flex: 1,
       overflowY: 'auto',
-      padding: '32px 24px 120px 24px',
+      overflowX: 'hidden',
+      // Celular: margem menor e espaço embaixo para o player (mais alto no celular)
+      padding: isMobile ? '16px 12px 210px' : '32px 24px 120px 24px',
       maxWidth: '1240px',
       margin: '0 auto',
       width: '100%',
       display: 'flex',
       flexDirection: 'column',
-      gap: '32px',
+      gap: isMobile ? '24px' : '32px',
     }}>
       {/* Welcome Banner (Soft & Bold Cyber-Dark) */}
-      <div 
+      <div
         className="floating-card"
         style={{
-          padding: '32px',
-          borderRadius: '28px',
+          padding: isMobile ? '20px 16px' : '32px',
+          borderRadius: isMobile ? '20px' : '28px',
           background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(12, 16, 21, 0.95) 70%)',
           border: '1px solid rgba(16, 185, 129, 0.25)',
           display: 'flex',
@@ -86,11 +94,11 @@ export const Painel: React.FC<PainelProps> = ({
             }}>
               PAINEL GERAL
             </span>
-            <span style={{ fontSize: '12px', color: '#94a3b8' }}>Ebook Readers GTP</span>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>Aedolia</span>
           </div>
 
           <h1 style={{
-            fontSize: '28px',
+            fontSize: isMobile ? '22px' : '28px',
             fontWeight: 900,
             color: '#f8fafc',
             letterSpacing: '-0.025em',
@@ -115,7 +123,7 @@ export const Painel: React.FC<PainelProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Flame size={16} color="#f59e0b" />
               <span style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>
-                {totalWordsRead.toLocaleString()} palavras lidas
+                {wordsReadTotal === null ? '…' : totalWordsRead.toLocaleString('pt-BR')} palavras lidas
               </span>
             </div>
 
@@ -129,12 +137,14 @@ export const Painel: React.FC<PainelProps> = ({
         </div>
 
         {/* Action Button */}
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', width: isMobile ? '100%' : undefined }}>
           {books.length > 0 && currentBook ? (
             <button
               onClick={() => onOpenBookInReader(currentBook)}
               style={{
                 display: 'flex',
+                flex: isMobile ? '1 1 auto' : undefined,
+                justifyContent: 'center',
                 alignItems: 'center',
                 gap: '10px',
                 padding: '14px 22px',
@@ -157,6 +167,8 @@ export const Painel: React.FC<PainelProps> = ({
             onClick={onOpenUpload}
             style={{
               display: 'flex',
+              flex: isMobile ? '1 1 auto' : undefined,
+              justifyContent: 'center',
               alignItems: 'center',
               gap: '8px',
               padding: '14px 20px',
@@ -175,10 +187,10 @@ export const Painel: React.FC<PainelProps> = ({
         </div>
       </div>
 
-      {/* Seção 1: Todos os Livros Subidos & Porcentagem Lida */}
+      {/* Seção 1: livros do usuário com a porcentagem lida */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{
               width: '8px',
               height: '8px',
@@ -193,14 +205,15 @@ export const Painel: React.FC<PainelProps> = ({
               textTransform: 'uppercase',
               letterSpacing: '-0.02em',
             }}>
-              Seus Livros & Leituras ({books.length})
+              Biblioteca & Leituras ({books.length})
             </h2>
           </div>
 
           <button
             onClick={onOpenUpload}
             style={{
-              display: 'flex',
+              // No celular o envio já está no topo e no cabeçalho
+              display: isMobile ? 'none' : 'flex',
               alignItems: 'center',
               gap: '6px',
               fontSize: '12px',
@@ -220,7 +233,7 @@ export const Painel: React.FC<PainelProps> = ({
         {/* Grid de Livros com Progresso em Destaque ou Empty State */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: books.length === 0 ? '1fr' : 'repeat(auto-fill, minmax(270px, 1fr))',
+          gridTemplateColumns: books.length === 0 ? '1fr' : 'repeat(auto-fill, minmax(min(270px, 100%), 1fr))',
           gap: '20px',
         }}>
           {books.length === 0 ? (
@@ -250,56 +263,68 @@ export const Painel: React.FC<PainelProps> = ({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#f8fafc' }}>
-                  Nenhum livro cadastrado ainda
+                  Sua estante está vazia
                 </h3>
-                <p style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '440px', lineHeight: 1.5 }}>
-                  Todos os dados fictícios foram removidos. Suba o seu primeiro PDF para salvá-lo no bucket do Supabase e começar a ouvir com sincronia de sentenças.
+                <p style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '460px', lineHeight: 1.5 }}>
+                  Suba seu primeiro PDF ou ebook para ouvir com a palavra destacada enquanto a voz lê.
                 </p>
               </div>
-              <button
-                onClick={onOpenUpload}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '12px 24px',
-                  borderRadius: '14px',
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: '#ffffff',
-                  fontSize: '12px',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
-                }}
-              >
-                <Upload size={16} />
-                <span>Subir Primeiro PDF</span>
-              </button>
+              {(
+                <button
+                  onClick={onOpenUpload}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px 24px',
+                    borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: '#ffffff',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
+                  }}
+                >
+                  <Upload size={16} />
+                  <span>Subir Primeiro PDF</span>
+                </button>
+              )}
             </div>
           ) : (
             books.map((book) => {
             const isFinished = book.readingProgress >= 100;
+            const isUploading = Boolean(book.isUploading);
+
             return (
               <div
                 key={book.id}
                 className="floating-card"
-                onClick={() => onOpenBookInReader(book)}
+                onClick={() => {
+                  if (isUploading) return;
+                  onOpenBookInReader(book);
+                }}
                 style={{
-                  borderRadius: '24px',
-                  padding: '20px',
+                  borderRadius: isMobile ? '18px' : '24px',
+                  padding: isMobile ? '12px' : '20px',
                   background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-subtle)',
-                  cursor: 'pointer',
+                  border: isUploading 
+                    ? '1px solid rgba(16, 185, 129, 0.4)' 
+                    : '1px solid var(--border-subtle)',
+                  cursor: isUploading ? 'wait' : 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   position: 'relative',
+                  overflow: 'hidden',
+                  transition: 'all 300ms ease',
+                  boxShadow: isUploading ? '0 0 20px rgba(16, 185, 129, 0.15)' : 'none',
                 }}
               >
-                {/* Book Banner */}
+                {/* Book Banner / Capa Real */}
                 <div style={{
-                  height: '120px',
+                  height: isMobile ? '160px' : '140px',
                   borderRadius: '16px',
                   background: book.coverGradient,
                   boxShadow: 'var(--shadow-sm)',
@@ -308,52 +333,146 @@ export const Painel: React.FC<PainelProps> = ({
                   justifyContent: 'space-between',
                   padding: '14px',
                   color: '#ffffff',
+                  position: 'relative',
+                  overflow: 'hidden',
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: 800,
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      background: 'rgba(0, 0, 0, 0.4)',
-                      letterSpacing: '0.05em',
-                    }}>
-                      {book.type.toUpperCase()}
-                    </span>
-
-                    {/* Badge da Porcentagem Lida */}
+                  {/* Capa Real como Imagem de Fundo/Destaque */}
+                  {book.coverImage && (
                     <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '3px 8px',
-                      borderRadius: '8px',
-                      background: isFinished ? '#10b981' : 'rgba(0, 0, 0, 0.55)',
-                      fontSize: '11px',
-                      fontWeight: 800,
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 0,
                     }}>
-                      {book.readingProgress}% LIDO
+                      <img 
+                        src={book.coverImage} 
+                        alt={book.title} 
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center top',
+                          filter: isUploading ? 'brightness(0.6)' : 'brightness(0.85)',
+                          transition: 'transform 300ms ease',
+                        }} 
+                      />
+                      {/* Gradiente escuro para contraste suave e leitura da tipografia */}
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(to top, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.35) 60%, rgba(0, 0, 0, 0.45) 100%)',
+                      }} />
                     </div>
+                  )}
+
+                  {/* Badges superiores (no celular, abaixo do botão Excluir, que fica no canto) */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', flexWrap: 'wrap', zIndex: 1, marginTop: isMobile ? '28px' : 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        background: 'rgba(0, 0, 0, 0.55)',
+                        backdropFilter: 'blur(4px)',
+                        letterSpacing: '0.05em',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                      }}>
+                        {book.type.toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Badge de Progresso ou Uploading */}
+                    {isUploading ? (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '3px 10px',
+                        borderRadius: '20px',
+                        background: 'rgba(16, 185, 129, 0.25)',
+                        border: '1px solid rgba(16, 185, 129, 0.6)',
+                        color: '#10b981',
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        letterSpacing: '0.04em',
+                      }}>
+                        <Loader2 size={11} className="animate-spin" />
+                        <span>SUBINDO...</span>
+                      </div>
+                    ) : (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 8px',
+                        borderRadius: '8px',
+                        background: isFinished ? '#10b981' : 'rgba(0, 0, 0, 0.6)',
+                        backdropFilter: 'blur(4px)',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                      }}>
+                        {book.readingProgress}% LIDO
+                      </div>
+                    )}
                   </div>
 
+                  {/* Título do Livro no Banner */}
                   <h3 style={{
                     fontSize: '15px',
                     fontWeight: 800,
                     lineHeight: 1.25,
-                    textShadow: '0 2px 4px rgba(0,0,0,0.6)',
+                    textShadow: '0 2px 6px rgba(0,0,0,0.8)',
+                    zIndex: 1,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
                   }}>
                     {book.title}
                   </h3>
+
+                  {/* Overlay animado se estiver subindo */}
+                  {isUploading && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'rgba(10, 15, 22, 0.75)',
+                      backdropFilter: 'blur(2px)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      zIndex: 2,
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        color: '#10b981',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        letterSpacing: '0.05em',
+                      }}>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>PROCESSANDO NA NUVEM</span>
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                        Sincronizando no MinIO & MariaDB...
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Details */}
                 <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>
+                    <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {book.author}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>
-                      ~{book.durationMinutes} min
+                    <span style={{ fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
+                      {isUploading ? 'Processando' : `~${book.durationMinutes} min`}
                     </span>
                   </div>
 
@@ -364,13 +483,25 @@ export const Painel: React.FC<PainelProps> = ({
                     background: 'rgba(255, 255, 255, 0.06)',
                     borderRadius: '4px',
                     overflow: 'hidden',
+                    position: 'relative',
                   }}>
-                    <div style={{
-                      width: `${book.readingProgress}%`,
-                      height: '100%',
-                      background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                      borderRadius: '4px',
-                    }} />
+                    {isUploading ? (
+                      <div style={{
+                        width: '100%',
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #10b981 0%, #38bdf8 50%, #10b981 100%)',
+                        backgroundSize: '200% 100%',
+                        animation: 'pulse 1.5s infinite',
+                        borderRadius: '4px',
+                      }} />
+                    ) : (
+                      <div style={{
+                        width: `${book.readingProgress}%`,
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                        borderRadius: '4px',
+                      }} />
+                    )}
                   </div>
 
                   <div style={{
@@ -380,43 +511,58 @@ export const Painel: React.FC<PainelProps> = ({
                     marginTop: '4px',
                   }}>
                     <span style={{ fontSize: '11px', color: '#64748b' }}>
-                      {book.totalWords.toLocaleString()} palavras
+                      {isUploading ? 'Aguarde um instante...' : `${book.totalWords.toLocaleString()} palavras`}
                     </span>
 
-                    <span style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: '11px',
-                      color: '#10b981',
-                      fontWeight: 700,
-                    }}>
-                      Ler Agora <ChevronRight size={13} />
-                    </span>
+                    {isUploading ? (
+                      <span style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        color: '#38bdf8',
+                        fontWeight: 700,
+                      }}>
+                        <Loader2 size={12} className="animate-spin" /> Carregando...
+                      </span>
+                    ) : (
+                      <span style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        color: '#10b981',
+                        fontWeight: 700,
+                      }}>
+                        Ler Agora <ChevronRight size={13} />
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Botão de excluir livro */}
-                {onDeleteBook && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteBook(book.id);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      top: '12px',
-                      right: '12px',
-                      background: 'rgba(0, 0, 0, 0.6)',
-                      color: '#ef4444',
-                      padding: '5px',
-                      borderRadius: '6px',
-                    }}
-                    title="Excluir livro"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                )}
+                {/* Ação do card: excluir */}
+                <div style={{ position: 'absolute', top: isMobile ? '18px' : '12px', right: isMobile ? '18px' : '12px', display: 'flex', gap: '6px', zIndex: 3 }}>
+                  {onDeleteBook && !isUploading && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteBook(book.id);
+                      }}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.65)',
+                        backdropFilter: 'blur(4px)',
+                        color: '#ef4444',
+                        padding: '6px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        cursor: 'pointer',
+                      }}
+                      title="Excluir livro"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })
@@ -471,7 +617,7 @@ export const Painel: React.FC<PainelProps> = ({
         ) : (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))',
             gap: '16px',
           }}>
             {favoriteVoices.map((voice) => (

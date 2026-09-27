@@ -10,9 +10,13 @@ export interface Book {
   author: string;
   coverGradient: string;
   coverImage?: string;
-  type: 'pdf' | 'epub' | 'txt' | 'article';
+  type: 'pdf' | 'epub' | 'txt' | 'article' | 'docx' | 'doc' | 'md' | 'mobi' | string;
   content: string; // full raw text
-  sentences: string[]; // parsed array of sentences for synced speech
+  sentences: string[]; // unidades faladas: frases, e dentro delas os trechos de fala e de narração separados
+  // Estrutura gerada pelo backend (text_pipeline). Ausente em livros processados antes da versão 2.
+  paragraphStarts?: number[]; // índice da primeira unidade de cada parágrafo
+  sentenceKinds?: string; // um caractere por unidade: 'n' narração, 'd' fala, 's' texto entre [colchetes], 'h' título
+  structureVersion?: number; // versão do text_pipeline que gerou a estrutura
   chapters: Chapter[];
   totalWords: number;
   readingProgress: number; // percentage 0-100
@@ -20,6 +24,9 @@ export interface Book {
   durationMinutes: number;
   uploadedAt: string;
   fileUrl?: string;
+  isUploading?: boolean;
+  uploadProgress?: number;
+  userId?: string;
 }
 
 export interface VoiceOption {
@@ -29,12 +36,22 @@ export interface VoiceOption {
   lang: string;
   accent: string;
   tag: string;
+  category?: 'grave' | 'espacosa' | 'cinema' | 'classica' | 'storyteller';
   description: string;
   avatarColor: string;
   samplePhrase: string;
   stability: number; // 0 to 1
   clarity: number; // 0 to 1
   speed: number;
+  cadence?: 'espacosa' | 'dramatica' | 'natural';
+  pitch?: string;
+  rate?: string;
+  sampleAudioUrl?: string;
+  tier?: 'premium' | 'basic'; // basic = plano grátis (Piper); premium = só PRO (Edge TTS)
+  engine?: 'edge' | 'piper';
+  isCloned?: boolean;
+  userId?: string;
+  createdAt?: number;
 }
 
 export type ThemeMode = 'dark' | 'sepia' | 'light' | 'oled';

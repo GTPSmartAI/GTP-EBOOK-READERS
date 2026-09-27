@@ -1,0 +1,10 @@
+.env
+uploads
+models
+scratch
+__pycache__
+**/__pycache__
+*.pyc
+*.log
+.venv
+venv

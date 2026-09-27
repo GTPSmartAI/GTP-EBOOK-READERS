@@ -10,7 +10,9 @@ import {
   LogOut
 } from 'lucide-react';
 import type { AppPage } from '../../types';
-import type { UserProfile } from '../../services/supabase';
+import type { UserProfile } from '../../services/api';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { AedoliaMark } from '../brand/AedoliaMark';
 
 interface AppHeaderProps {
   activePage: AppPage;
@@ -20,7 +22,7 @@ interface AppHeaderProps {
   onOpenUpload: () => void;
   onOpenSubscription: () => void;
   onOpenAuth: () => void;
-  onSignOut: () => void;
+  onSignOut?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -41,6 +43,51 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     { id: 'vozes', label: 'Vozes', icon: <Mic2 size={15} /> },
     { id: 'configuracoes', label: 'Configurações', icon: <Sliders size={15} /> },
   ];
+
+  const isMobile = useIsMobile();
+
+  // Celular: a navegação fica no menu de baixo (MobileBottomNav); aqui só a marca.
+  // A assinatura e a conta ficam na aba Configurações.
+  if (isMobile) {
+    return (
+      <header style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        height: '52px',
+        flexShrink: 0,
+        background: 'rgba(12, 16, 21, 0.96)',
+        borderBottom: '1px solid var(--border-subtle)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        padding: '0 14px',
+      }}>
+        <button
+          onClick={() => onNavigate('painel')}
+          aria-label="Início"
+          style={{ display: 'flex', alignItems: 'center', gap: '10px' }}
+        >
+          <span style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff',
+            flexShrink: 0,
+          }}>
+            <AedoliaMark size={24} />
+          </span>
+          <span style={{ fontSize: '14px', fontWeight: 900, color: '#f8fafc', letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
+            Aedolia
+          </span>
+        </button>
+      </header>
+    );
+  }
 
   return (
     <header style={{
@@ -78,7 +125,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           color: '#ffffff',
           boxShadow: '0 8px 18px rgba(16, 185, 129, 0.35)',
         }}>
-          <BookOpen size={20} />
+          <AedoliaMark size={27} />
         </div>
         <div>
           <span style={{
@@ -88,7 +135,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             letterSpacing: '-0.025em',
             textTransform: 'uppercase',
           }}>
-            Ebook Readers <span style={{ color: '#10b981' }}>GTP</span>
+            Aedolia
           </span>
           <span style={{
             display: 'block',
@@ -98,7 +145,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
           }}>
-            Leitor Inteligente
+            por GTP Smart
           </span>
         </div>
       </div>
@@ -231,20 +278,22 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 color: '#fff',
                 fontWeight: 800,
               }}>
-                {(user.email || 'U')[0].toUpperCase()}
+                {(user.full_name || user.email || 'U')[0].toUpperCase()}
               </div>
               <span style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 600, maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                {user.full_name || user.username}
               </span>
             </div>
 
-            <button
-              onClick={onSignOut}
-              style={{ padding: '8px', color: '#94a3b8' }}
-              title="Sair da Conta"
-            >
-              <LogOut size={16} />
-            </button>
+            {onSignOut && (
+              <button
+                onClick={onSignOut}
+                style={{ padding: '8px', color: '#94a3b8' }}
+                title="Sair da Conta"
+              >
+                <LogOut size={16} />
+              </button>
+            )}
           </div>
         ) : (
           <button

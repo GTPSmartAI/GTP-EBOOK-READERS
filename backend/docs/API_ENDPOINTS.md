@@ -1,19 +1,20 @@
-# 🌐 Endpoints da API - ElevenReader
+# 🌐 Endpoints da API - Aedolia
 
-Base URL padrão: `http://localhost:5000`
+Base URL padrão: `http://localhost:4000`
 
 ---
 
 ## 1. Verificação de Saúde
 * **Rota:** `GET /api/health`
-* **Descrição:** Retorna status operacional da API e conexão com o Supabase.
+* **Descrição:** Retorna status operacional da API e conexão com o MariaDB.
 * **Exemplo de Resposta:**
 ```json
 {
   "status": "online",
-  "service": "ElevenReader Backend API (Python/Flask)",
+  "service": "Aedolia API (Python/Flask)",
   "version": "2.0.0",
-  "supabase_connected": true
+  "database": "MariaDB (ebook_readers_gtp)",
+  "mariadb_connected": true
 }
 ```
 
@@ -21,7 +22,7 @@ Base URL padrão: `http://localhost:5000`
 
 ## 2. Webhook de Pagamento e Assinaturas
 * **Rota:** `POST /api/webhooks/payment`
-* **Descrição:** Recebe eventos de checkout (n8n, Kiwify, Asaas, Stripe, etc.) e ativa o plano do usuário.
+* **Descrição:** Recebe eventos de checkout (n8n, Kiwify, Asaas, Stripe, etc.) e ativa o plano do usuário no MariaDB.
 * **Corpo da Requisição (JSON):**
 ```json
 {
@@ -38,18 +39,18 @@ Base URL padrão: `http://localhost:5000`
 
 ## 3. Status do Usuário
 * **Rota:** `GET /api/users/<email>/status`
-* **Descrição:** Retorna plano e detalhes de leitura do usuário.
+* **Descrição:** Retorna plano e detalhes de leitura do usuário no MariaDB.
 
 ---
 
-## 4. Upload e Extração de PDF
+## 4. Upload e Extração de Livros (PDF/EPUB)
 * **Rota:** `POST /api/books/upload`
 * **Form-Data:**
-  * `file`: Arquivo `.pdf`
+  * `file`: Arquivo `.pdf` ou `.epub`
   * `title`: Título do livro (opcional)
   * `author`: Autor (opcional)
-  * `user_id`: ID do usuário no Supabase (opcional)
-* **Resposta:** Objeto com texto completo, capítulos detectados, frases divididas e tempo estimado.
+  * `user_id`: ID do usuário no MariaDB (opcional)
+* **Resposta:** Objeto com texto completo, capítulos detectados, frases divididas, tempo estimado e storage_url no MinIO S3.
 
 ---
 

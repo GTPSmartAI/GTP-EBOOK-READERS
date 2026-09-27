@@ -111,38 +111,52 @@ export async function deleteBookFull(id: string): Promise<void> {
 }
 
 /**
- * Salva apenas metadados leves no localStorage (evita erro de cota 5MB)
+ * Salva apenas metadados leves no localStorage indexados por usuário (evita vazamento de dados entre contas)
  */
-export function saveBooksMetadataSafe(books: Book[]): void {
+export function saveBooksMetadataSafe(books: Book[], userId?: string): void {
   try {
+    const key = userId ? `${META_KEY}_${userId}` : META_KEY;
     const metaList = books.map((b) => ({
       id: b.id,
       title: b.title,
       author: b.author,
       type: b.type,
       coverGradient: b.coverGradient,
+      coverImage: b.coverImage,
       totalWords: b.totalWords,
       durationMinutes: b.durationMinutes,
       readingProgress: b.readingProgress,
       lastReadSentenceIndex: b.lastReadSentenceIndex,
       fileUrl: b.fileUrl,
       chapters: b.chapters || [],
-      // Não salva content nem as milhares de sentences no localStorage
+      userId: b.userId || userId,
       sentencesCount: b.sentences?.length || 0,
     }));
-    localStorage.setItem(META_KEY, JSON.stringify(metaList));
+    localStorage.setItem(key, JSON.stringify(metaList));
   } catch (e) {
     console.warn('[BookStorage] Cota de localStorage atingida, metadados preservados em memória:', e);
   }
 }
 
 /**
- * Carrega a lista de livros combinando metadados e armazenamento IndexedDB
+ * Carrega a lista de livros combinando metadados e armazenamento IndexedDB filtrados por usuário
  */
-export async function loadInitialBooks(): Promise<Book[]> {
+export async function loadInitialBooks(userId?: string): Promise<Book[]> {
   const loadedList: Book[] = [];
 
-  // 1. Tenta carregar todos os livros do IndexedDB
+  // Progresso de leitura é gravado nos metadados a cada frase; a cópia completa no IndexedDB fica com o valor antigo
+  const progressById = new Map<string, { lastReadSentenceIndex?: number; readingProgress?: number }>();
+  try {
+    const savedMeta = localStorage.getItem(userId ? `${META_KEY}_${userId}` : META_KEY);
+    const parsed = savedMeta ? JSON.parse(savedMeta) : [];
+    if (Array.isArray(parsed)) {
+      parsed.forEach((m: any) => progressById.set(m.id, m));
+    }
+  } catch {
+    // metadados ilegíveis: segue sem progresso salvo
+  }
+
+  // 1. Tenta carregar os livros deste usuário guardados no IndexedDB
   try {
     const db = await openDatabase();
     const allFromDb = await new Promise<Book[]>((resolve) => {
@@ -154,19 +168,35 @@ export async function loadInitialBooks(): Promise<Book[]> {
     });
 
     if (allFromDb.length > 0) {
-      allFromDb.forEach((b) => {
+      const filtered = allFromDb.filter((b) => {
+        // Livro de outra conta que já usou este aparelho nunca aparece
+        return Boolean(userId) && b.userId === userId;
+      });
+
+      filtered.forEach((stored) => {
+        const progress = progressById.get(stored.id);
+        const b: Book = progress
+          ? {
+              ...stored,
+              lastReadSentenceIndex: progress.lastReadSentenceIndex ?? stored.lastReadSentenceIndex,
+              readingProgress: progress.readingProgress ?? stored.readingProgress,
+            }
+          : stored;
         inMemoryBooks.set(b.id, b);
         loadedList.push(b);
       });
-      return loadedList;
+      if (loadedList.length > 0) {
+        return loadedList;
+      }
     }
   } catch (err) {
     console.warn('[BookStorage] IndexedDB inicial vazio ou falhou:', err);
   }
 
-  // 2. Fallback: lê metadados do localStorage
+  // 2. Fallback: lê metadados do localStorage indexado por usuário
   try {
-    const savedMeta = localStorage.getItem(META_KEY);
+    const key = userId ? `${META_KEY}_${userId}` : META_KEY;
+    const savedMeta = localStorage.getItem(key);
     if (savedMeta) {
       const parsed = JSON.parse(savedMeta);
       if (Array.isArray(parsed)) {
@@ -175,6 +205,7 @@ export async function loadInitialBooks(): Promise<Book[]> {
           title: m.title,
           author: m.author || 'Autor Desconhecido',
           coverGradient: m.coverGradient || 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+          coverImage: m.coverImage,
           type: m.type || 'pdf',
           content: '',
           sentences: [],
@@ -185,6 +216,7 @@ export async function loadInitialBooks(): Promise<Book[]> {
           lastReadSentenceIndex: m.lastReadSentenceIndex || 0,
           fileUrl: m.fileUrl,
           uploadedAt: m.uploadedAt || new Date().toISOString(),
+          userId: m.userId,
         }));
       }
     }

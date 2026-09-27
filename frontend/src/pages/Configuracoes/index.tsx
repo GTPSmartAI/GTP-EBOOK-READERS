@@ -10,15 +10,18 @@ import {
   LogOut
 } from 'lucide-react';
 import type { ReaderSettings, ThemeMode, FontFamily } from '../../types';
-import type { UserProfile } from '../../services/supabase';
+import type { UserProfile } from '../../services/api';
+import { ReadingStatsPanel } from '../../components/ReadingStatsPanel';
+import { AccountSecurityCard } from '../../components/AccountSecurityCard';
+import { OfflineDownloadsCard } from '../../components/OfflineDownloadsCard';
 
 interface ConfiguracoesProps {
   settings: ReaderSettings;
   onUpdateSettings: (newSettings: Partial<ReaderSettings>) => void;
-  user: any;
+  user: UserProfile;
   userProfile: UserProfile | null;
   onOpenSubscription: () => void;
-  onSignOut: () => void;
+  onSignOut?: () => void;
 }
 
 export const Configuracoes: React.FC<ConfiguracoesProps> = ({
@@ -115,13 +118,13 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
             fontSize: '20px',
             boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
           }}>
-            {user?.email ? user.email[0].toUpperCase() : 'U'}
+            {(user.full_name || user.email || 'U')[0].toUpperCase()}
           </div>
 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc' }}>
-                {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Usuário Convidado'}
+                {user.full_name || user.username}
               </h3>
               <span style={{
                 fontSize: '11px',
@@ -136,7 +139,7 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
             </div>
 
             <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '2px' }}>
-              {user?.email || 'Acesso local em modo demonstração'}
+              {user.email} · @{user.username}
             </p>
           </div>
         </div>
@@ -162,7 +165,7 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
             <span>{isPro ? 'Gerenciar Assinatura' : 'Fazer Upgrade PRO'}</span>
           </button>
 
-          {user && (
+          {user && onSignOut && (
             <button
               onClick={onSignOut}
               style={{
@@ -184,6 +187,12 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
           )}
         </div>
       </div>
+
+      <AccountSecurityCard user={user} />
+
+      <OfflineDownloadsCard />
+
+      <ReadingStatsPanel />
 
       {/* Card 2: Preferências Visuais e Temas */}
       <div 
@@ -288,7 +297,7 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
         </div>
 
         {/* Sliders de Tamanho e Espaçamento */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: '24px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
               <span style={{ fontWeight: 600, color: '#f8fafc' }}>Tamanho da Fonte</span>
