@@ -130,6 +130,8 @@ _EXTRA_COLUMNS = {
         "cover_key": "VARCHAR(768) NULL",
         # Pasta da estante onde o usuário guardou o livro (book_folders.id); NULL = sem pasta
         "folder_id": "VARCHAR(64) NULL",
+        # Sobe a cada reprocessamento do texto: o app troca a cópia guardada no aparelho quando muda
+        "content_rev": "INT NOT NULL DEFAULT 0",
     },
     "users": {
         "username": "VARCHAR(64) NULL",
@@ -323,7 +325,7 @@ def get_user_books(user_id: str, include_content: bool = False) -> List[Dict[str
         return []
     db = get_mariadb_client()
     try:
-        base_cols = "b.`id`, b.`user_id`, b.`title`, b.`author`, b.`cover_gradient`, b.`cover_image_url`, b.`cover_key`, b.`file_key`, b.`storage_prefix`, b.`folder_id`, b.`type`, b.`total_words`, b.`duration_minutes`, b.`file_url`, b.`created_at`, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`"
+        base_cols = "b.`id`, b.`user_id`, b.`title`, b.`author`, b.`cover_gradient`, b.`cover_image_url`, b.`cover_key`, b.`file_key`, b.`storage_prefix`, b.`folder_id`, b.`content_rev`, b.`type`, b.`total_words`, b.`duration_minutes`, b.`file_url`, b.`created_at`, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`"
         cols = "b.*, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`" if include_content else base_cols
         join_clause = "LEFT JOIN `reading_progress` rp ON b.`id` = rp.`book_id` AND rp.`user_id` = %s"
         sql = f"SELECT {cols} FROM `books` b {join_clause} WHERE b.`user_id` = %s ORDER BY b.`created_at` DESC"

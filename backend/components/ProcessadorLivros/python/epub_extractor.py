@@ -252,6 +252,61 @@ def _looks_like_toc_page(html: str, paragraphs: List[Paragraph], toc_titles: set
     return total > 0 and linked / total > 0.6
 
 
+_CHAPTER_NUMBER_RE = re.compile(r'^\s*(?:cap[ií]tulo|chapter|cap\.?|ch\.?)?\s*(\d{1,5})\b', re.IGNORECASE)
+
+
+def _split_stem(path: str) -> str:
+    """'ch_26_split_001.xhtml' -> 'ch_26.xhtml' (pedaços do mesmo capítulo separados pelo Calibre)."""
+    return re.sub(r'_split_\d+(?=\.\w+$)', '', path)
+
+
+def _fix_alphabetical_chapter_order(spine: List[str], toc: List[Tuple[str, Optional[str], str]]) -> List[str]:
+    """
+    Alguns EPUBs são montados com os capítulos em ordem alfabética dos números
+    ("1000, 1001, ..., 1057, 553, 554, ..., 999"). Só nesse caso exato (todo capítulo do sumário
+    numerado, sem repetição, e a ordem do arquivo igual à ordem alfabética dos números) a ordem
+    de leitura é refeita pela ordem numérica. Em qualquer outro caso vale a ordem do arquivo.
+    """
+    first_title: Dict[str, str] = {}
+    for path, _, title in toc:
+        first_title.setdefault(path, title)
+
+    numbered: List[Tuple[str, int, str]] = []
+    for path in spine:
+        if path in first_title:
+            m = _CHAPTER_NUMBER_RE.match(first_title[path])
+            if not m:
+                return spine
+            numbered.append((path, int(m.group(1)), m.group(1)))
+    numbers = [n for _, n, _ in numbered]
+    digits = [d for _, _, d in numbered]
+    if len(numbered) < 20 or len(set(numbers)) != len(numbers) or numbers == sorted(numbers) or digits != sorted(digits):
+        return spine
+
+    # Cada capítulo leva junto os pedaços seguintes dele ("_split_001"...); o resto fica no lugar
+    blocks: Dict[str, List[str]] = {}
+    layout: List[Tuple[bool, str]] = []  # (é capítulo, caminho)
+    current: Optional[str] = None
+    for path in spine:
+        if path in first_title:
+            current = path
+            blocks[path] = [path]
+            layout.append((True, path))
+        elif current and _split_stem(path) == _split_stem(current):
+            blocks[current].append(path)
+        else:
+            current = None
+            layout.append((False, path))
+
+    number_of = {path: n for path, n, _ in numbered}
+    in_order = iter(sorted(blocks, key=number_of.__getitem__))
+    fixed: List[str] = []
+    for is_chapter, path in layout:
+        fixed.extend(blocks[next(in_order)] if is_chapter else [path])
+    print(f"[EPUB] Capítulos estavam em ordem alfabética dos números; reordenados ({len(blocks)} capítulos).")
+    return fixed
+
+
 def _decode(raw: bytes) -> str:
     try:
         return raw.decode("utf-8")
@@ -282,22 +337,35 @@ def extract_epub_paragraphs(file_path: str) -> List[Paragraph]:
             print(f"[EPUB Warning] Sumário ilegível, usando títulos do texto: {toc_err}")
             toc = []
 
+        spine = _fix_alphabetical_chapter_order(spine, toc)
         toc_titles = {_normalize_title(title) for _, _, title in toc}
         toc_by_file: Dict[str, List[Tuple[Optional[str], str]]] = {}
         for path, fragment, title in toc:
             toc_by_file.setdefault(path, []).append((fragment, title))
 
         paragraphs: List[Paragraph] = []
+        # Título do sumário que apontava para um arquivo sem texto (ex.: o Calibre separa a imagem de
+        # abertura do capítulo em "cap_split_000.xhtml" e o texto em "cap_split_001.xhtml"): passa
+        # para o próximo arquivo com texto, senão o capítulo some da lista.
+        carried_title: Optional[str] = None
         for html_path in spine:
             if html_path == nav_path or html_path not in namelist:
                 continue  # o sumário em si não é lido em voz alta
             try:
                 html = _decode(zf.read(html_path))
+                entries = list(toc_by_file.get(html_path) or [])
+                own_start = next((t for f, t in entries if not f), None)
+                if carried_title and own_start is None:
+                    entries.insert(0, (None, carried_title))
                 file_paragraphs = extract_html_paragraphs(
                     html,
-                    toc_entries=toc_by_file.get(html_path),
+                    toc_entries=entries,
                     headings_as_chapters=not toc,
                 )
+                if not file_paragraphs:
+                    carried_title = own_start or carried_title
+                    continue
+                carried_title = None
                 if _looks_like_toc_page(html, file_paragraphs, toc_titles):
                     continue
                 paragraphs.extend(file_paragraphs)

@@ -303,5 +303,6 @@ function mapDbToBook(row: any): Book {
     fileUrl: row.file_url,
     userId: row.user_id || row.userId,
     folderId: row.folder_id ?? null,
+    contentRev: Number(row.content_rev) || 0,
   };
 }

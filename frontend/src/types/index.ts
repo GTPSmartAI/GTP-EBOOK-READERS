@@ -28,6 +28,7 @@ export interface Book {
   uploadProgress?: number;
   userId?: string;
   folderId?: string | null; // pasta da estante (BookFolder.id); null = sem pasta
+  contentRev?: number; // sobe quando o servidor reprocessa o texto; cópia local com outro valor é baixada de novo
 }
 
 /** Pasta criada pelo usuário para organizar a estante */

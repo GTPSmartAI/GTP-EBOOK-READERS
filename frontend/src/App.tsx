@@ -68,7 +68,7 @@ try {
  * conteúdo já carregado e progresso de leitura não podem ser perdidos por uma listagem que não os traz.
  */
 function mergeLocalBookState(base: Book, local: Book): Book {
-  const hasLocalContent = Boolean(local.sentences?.length);
+  const hasLocalContent = Boolean(local.sentences?.length) && (local.contentRev ?? 0) === (base.contentRev ?? 0);
   const localProg = local.readingProgress || 0;
   const baseProg = base.readingProgress || 0;
   const bestProg = Math.max(localProg, baseProg);
@@ -102,13 +102,16 @@ const hasStructuredContent = (book: Book) =>
       (book.structureVersion || 0) >= REQUIRED_STRUCTURE_VERSION
   );
 
+// O servidor reprocessou o texto (ex.: capítulos corrigidos): a cópia guardada no aparelho ficou velha
+const sameContentRev = (a: Book, b: Book) => (a.contentRev ?? 0) === (b.contentRev ?? 0);
+
 /**
  * Carrega o conteúdo completo do livro: IndexedDB primeiro, backend quando o cache local
  * não existe ou está no formato antigo (sem parágrafos/falas).
  */
 async function loadFullBook(book: Book, onProgress?: (fraction: number) => void): Promise<Book | null> {
   const local = await getBookFull(book.id);
-  if (local && hasStructuredContent(local)) return local;
+  if (local && hasStructuredContent(local) && sameContentRev(local, book)) return local;
 
   const lastIndex = book.lastReadSentenceIndex || local?.lastReadSentenceIndex || 0;
   const readingProgress = book.readingProgress || local?.readingProgress || 0;
@@ -616,7 +619,7 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
     return () => {
       isCurrent = false;
     };
-  }, [currentBook?.id, contentRetry]);
+  }, [currentBook?.id, currentBook?.contentRev ?? 0, contentRetry]);
 
   // ------------------------------------------------------------------ player do Android
   // Notificação / tela de bloqueio com "Livro – Capítulo" e a barra do capítulo.
