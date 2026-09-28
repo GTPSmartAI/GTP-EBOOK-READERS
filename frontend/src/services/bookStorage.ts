@@ -131,6 +131,7 @@ export function saveBooksMetadataSafe(books: Book[], userId?: string): void {
       chapters: b.chapters || [],
       userId: b.userId || userId,
       sentencesCount: b.sentences?.length || 0,
+      folderId: b.folderId ?? null,
     }));
     localStorage.setItem(key, JSON.stringify(metaList));
   } catch (e) {
@@ -145,7 +146,7 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
   const loadedList: Book[] = [];
 
   // Progresso de leitura é gravado nos metadados a cada frase; a cópia completa no IndexedDB fica com o valor antigo
-  const progressById = new Map<string, { lastReadSentenceIndex?: number; readingProgress?: number }>();
+  const progressById = new Map<string, { lastReadSentenceIndex?: number; readingProgress?: number; folderId?: string | null }>();
   try {
     const savedMeta = localStorage.getItem(userId ? `${META_KEY}_${userId}` : META_KEY);
     const parsed = savedMeta ? JSON.parse(savedMeta) : [];
@@ -180,6 +181,8 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
               ...stored,
               lastReadSentenceIndex: progress.lastReadSentenceIndex ?? stored.lastReadSentenceIndex,
               readingProgress: progress.readingProgress ?? stored.readingProgress,
+              // A pasta também muda sem regravar a cópia completa
+              folderId: progress.folderId !== undefined ? progress.folderId : stored.folderId,
             }
           : stored;
         inMemoryBooks.set(b.id, b);
@@ -217,6 +220,7 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
           fileUrl: m.fileUrl,
           uploadedAt: m.uploadedAt || new Date().toISOString(),
           userId: m.userId,
+          folderId: m.folderId ?? null,
         }));
       }
     }

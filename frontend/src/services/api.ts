@@ -1,4 +1,4 @@
-import type { Book } from '../types';
+import type { Book, BookFolder } from '../types';
 
 import { BACKEND_URL } from '../config';
 import { apiFetch } from './session';
@@ -57,7 +57,8 @@ export async function uploadBookReal(
   file: File,
   title: string,
   author: string,
-  coverBase64?: string
+  coverBase64?: string,
+  folderId?: string | null
 ): Promise<Book> {
   const formData = new FormData();
   formData.append('file', file);
@@ -65,6 +66,9 @@ export async function uploadBookReal(
   formData.append('author', author);
   if (coverBase64) {
     formData.append('cover_base64', coverBase64);
+  }
+  if (folderId) {
+    formData.append('folder_id', folderId);
   }
 
   const response = await apiFetch('/api/books/upload', {
@@ -100,6 +104,51 @@ export async function deleteBookReal(bookId: string): Promise<boolean> {
     console.warn('Erro ao deletar livro via backend:', e);
     return false;
   }
+}
+
+// ------------------------------------------------------------------ pastas da estante
+
+/** Resposta de uma ação de pasta: o dado, ou a mensagem de erro para mostrar ao usuário */
+export type FolderResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+async function folderRequest<T>(path: string, init: RequestInit, pick: (json: any) => T): Promise<FolderResult<T>> {
+  try {
+    const res = await apiFetch(path, {
+      ...init,
+      headers: init.body ? { 'Content-Type': 'application/json' } : undefined,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) return { ok: true, data: pick(json) };
+    return { ok: false, error: json.error || `Erro ${res.status}` };
+  } catch {
+    return { ok: false, error: 'Sem conexão com o servidor.' };
+  }
+}
+
+/** Pastas do usuário; null quando o servidor não respondeu */
+export async function fetchFolders(): Promise<BookFolder[] | null> {
+  const r = await folderRequest('/api/folders', {}, (j) => (j.folders || []) as BookFolder[]);
+  return r.ok ? r.data.map((f) => ({ id: f.id, name: f.name })) : null;
+}
+
+export function createFolder(name: string) {
+  return folderRequest('/api/folders', { method: 'POST', body: JSON.stringify({ name }) },
+    (j) => ({ id: j.folder.id, name: j.folder.name }) as BookFolder);
+}
+
+export function renameFolder(folderId: string, name: string) {
+  return folderRequest(`/api/folders/${folderId}`, { method: 'PATCH', body: JSON.stringify({ name }) },
+    (j) => ({ id: j.folder.id, name: j.folder.name }) as BookFolder);
+}
+
+/** Apaga a pasta; os livros dela voltam para "sem pasta" */
+export function deleteFolder(folderId: string) {
+  return folderRequest(`/api/folders/${folderId}`, { method: 'DELETE' }, () => true);
+}
+
+export function moveBookToFolder(bookId: string, folderId: string | null) {
+  return folderRequest(`/api/books/${bookId}/folder`, { method: 'PUT', body: JSON.stringify({ folder_id: folderId }) },
+    () => true);
 }
 
 // ------------------------------------------------------------------ estatísticas de leitura
@@ -253,5 +302,6 @@ function mapDbToBook(row: any): Book {
     uploadedAt: row.created_at ? new Date(row.created_at).toLocaleDateString('pt-BR') : 'Hoje',
     fileUrl: row.file_url,
     userId: row.user_id || row.userId,
+    folderId: row.folder_id ?? null,
   };
 }

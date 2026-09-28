@@ -27,6 +27,13 @@ export interface Book {
   isUploading?: boolean;
   uploadProgress?: number;
   userId?: string;
+  folderId?: string | null; // pasta da estante (BookFolder.id); null = sem pasta
+}
+
+/** Pasta criada pelo usuário para organizar a estante */
+export interface BookFolder {
+  id: string;
+  name: string;
 }
 
 export interface VoiceOption {

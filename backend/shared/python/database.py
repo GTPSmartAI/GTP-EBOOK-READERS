@@ -128,6 +128,8 @@ _EXTRA_COLUMNS = {
         "storage_prefix": "VARCHAR(512) NULL",
         "file_key": "VARCHAR(768) NULL",
         "cover_key": "VARCHAR(768) NULL",
+        # Pasta da estante onde o usuário guardou o livro (book_folders.id); NULL = sem pasta
+        "folder_id": "VARCHAR(64) NULL",
     },
     "users": {
         "username": "VARCHAR(64) NULL",
@@ -162,6 +164,16 @@ _NEW_TABLES = {
           `updated_at` DATETIME NULL,
           PRIMARY KEY (`user_id`, `stat_date`, `book_id`),
           INDEX `idx_stats_user_date` (`user_id`, `stat_date`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    # Pastas que o usuário cria para organizar a estante (só organização: não mexe no MinIO)
+    "book_folders": """
+        CREATE TABLE IF NOT EXISTS `book_folders` (
+          `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+          `user_id` VARCHAR(64) NOT NULL,
+          `name` VARCHAR(80) NOT NULL,
+          `created_at` DATETIME NOT NULL,
+          INDEX `idx_folders_user` (`user_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
 }
@@ -311,7 +323,7 @@ def get_user_books(user_id: str, include_content: bool = False) -> List[Dict[str
         return []
     db = get_mariadb_client()
     try:
-        base_cols = "b.`id`, b.`user_id`, b.`title`, b.`author`, b.`cover_gradient`, b.`cover_image_url`, b.`cover_key`, b.`file_key`, b.`storage_prefix`, b.`type`, b.`total_words`, b.`duration_minutes`, b.`file_url`, b.`created_at`, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`"
+        base_cols = "b.`id`, b.`user_id`, b.`title`, b.`author`, b.`cover_gradient`, b.`cover_image_url`, b.`cover_key`, b.`file_key`, b.`storage_prefix`, b.`folder_id`, b.`type`, b.`total_words`, b.`duration_minutes`, b.`file_url`, b.`created_at`, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`"
         cols = "b.*, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`" if include_content else base_cols
         join_clause = "LEFT JOIN `reading_progress` rp ON b.`id` = rp.`book_id` AND rp.`user_id` = %s"
         sql = f"SELECT {cols} FROM `books` b {join_clause} WHERE b.`user_id` = %s ORDER BY b.`created_at` DESC"
@@ -352,6 +364,70 @@ def delete_book_from_db(book_id: str, user_id: str) -> bool:
     except Exception as e:
         logger.error(f"Erro ao deletar livro {book_id} do MariaDB: {e}")
         return False
+
+# ------------------------------------------------------------------ pastas da estante
+
+def get_user_folders(user_id: str) -> List[Dict[str, Any]]:
+    try:
+        return get_mariadb_client().execute_query(
+            "SELECT `id`, `name`, `created_at` FROM `book_folders` WHERE `user_id` = %s ORDER BY `name`", (user_id,)
+        )
+    except Exception as e:
+        raise DatabaseUnavailableError(str(e)) from e
+
+
+def get_folder(folder_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    """A pasta, só se for deste usuário."""
+    try:
+        return get_mariadb_client().execute_one(
+            "SELECT `id`, `name`, `created_at` FROM `book_folders` WHERE `id` = %s AND `user_id` = %s LIMIT 1",
+            (folder_id, user_id),
+        )
+    except Exception as e:
+        raise DatabaseUnavailableError(str(e)) from e
+
+
+def folder_name_taken(user_id: str, name: str, except_id: Optional[str] = None) -> bool:
+    row = get_mariadb_client().execute_one(
+        "SELECT `id` FROM `book_folders` WHERE `user_id` = %s AND LOWER(`name`) = LOWER(%s) AND `id` <> %s LIMIT 1",
+        (user_id, name, except_id or ""),
+    )
+    return bool(row)
+
+
+def create_folder(user_id: str, name: str) -> Dict[str, Any]:
+    import secrets
+    folder_id = f"folder-{secrets.token_hex(8)}"
+    get_mariadb_client().execute_non_query(
+        "INSERT INTO `book_folders` (`id`, `user_id`, `name`, `created_at`) VALUES (%s, %s, %s, %s)",
+        (folder_id, user_id, name, get_now_br().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    return get_folder(folder_id, user_id)
+
+
+def rename_folder(folder_id: str, user_id: str, name: str) -> bool:
+    return get_mariadb_client().execute_non_query(
+        "UPDATE `book_folders` SET `name` = %s WHERE `id` = %s AND `user_id` = %s", (name, folder_id, user_id)
+    ) > 0
+
+
+def delete_folder(folder_id: str, user_id: str) -> bool:
+    """Apaga a pasta. Os livros dela não são apagados: voltam para "sem pasta"."""
+    db = get_mariadb_client()
+    db.execute_non_query(
+        "UPDATE `books` SET `folder_id` = NULL WHERE `folder_id` = %s AND `user_id` = %s", (folder_id, user_id)
+    )
+    return db.execute_non_query(
+        "DELETE FROM `book_folders` WHERE `id` = %s AND `user_id` = %s", (folder_id, user_id)
+    ) > 0
+
+
+def set_book_folder(book_id: str, user_id: str, folder_id: Optional[str]) -> bool:
+    """Coloca o livro numa pasta (ou tira de todas, com None). Só o dono."""
+    return get_mariadb_client().execute_non_query(
+        "UPDATE `books` SET `folder_id` = %s WHERE `id` = %s AND `user_id` = %s", (folder_id, book_id, user_id)
+    ) > 0
+
 
 def save_reading_progress(user_id: str, book_id: str, last_sentence_index: int, progress_percentage: int) -> bool:
     """Salva o progresso de leitura no MariaDB."""

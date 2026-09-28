@@ -1,18 +1,22 @@
-import React from 'react';
-import { 
-  BookOpen, 
-  Play, 
-  Upload, 
-  Heart, 
-  Volume2, 
-  ChevronRight, 
+import React, { useState } from 'react';
+import {
+  BookOpen,
+  Play,
+  Upload,
+  Heart,
+  Volume2,
+  ChevronRight,
   Flame,
   CheckCircle2,
   Trash2,
-  Loader2
+  Loader2,
+  Folder,
+  FolderInput
 } from 'lucide-react';
-import type { Book, VoiceOption } from '../../types';
+import type { Book, BookFolder, VoiceOption } from '../../types';
+import type { FolderResult } from '../../services/api';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { FolderBar, MoveToFolderSheet } from './Folders';
 
 interface PainelProps {
   books: Book[];
@@ -25,6 +29,14 @@ interface PainelProps {
   onToggleFavoriteVoice: (voiceId: string) => void;
   onPreviewVoice: (voice: VoiceOption) => void;
   onDeleteBook: (bookId: string) => void;
+  folders: BookFolder[];
+  /** 'all' = todos, 'none' = sem pasta, ou o id da pasta aberta */
+  activeFolderId: string;
+  onSelectFolder: (id: string) => void;
+  onCreateFolder: (name: string, openIt?: boolean) => Promise<FolderResult<BookFolder>>;
+  onRenameFolder: (id: string, name: string) => Promise<string | null>;
+  onDeleteFolder: (id: string) => Promise<string | null>;
+  onMoveBookToFolder: (bookId: string, folderId: string | null) => Promise<string | null>;
   userName: string;
   /** Palavras que a voz leu de verdade (estatísticas); null enquanto carrega */
   wordsReadTotal?: number | null;
@@ -41,11 +53,25 @@ export const Painel: React.FC<PainelProps> = ({
   onToggleFavoriteVoice,
   onPreviewVoice,
   onDeleteBook,
+  folders,
+  activeFolderId,
+  onSelectFolder,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onMoveBookToFolder,
   userName,
   wordsReadTotal = null,
 }) => {
   const isMobile = useIsMobile();
   const favoriteVoices = allVoices.filter((v) => favoriteVoiceIds.includes(v.id));
+  const [movingBook, setMovingBook] = useState<Book | null>(null);
+
+  const folderNameById = new Map(folders.map((f) => [f.id, f.name]));
+  const visibleBooks = activeFolderId === 'all'
+    ? books
+    : books.filter((b) => (b.folderId ?? null) === (activeFolderId === 'none' ? null : activeFolderId));
+  const activeFolderName = folderNameById.get(activeFolderId);
 
   const totalWordsRead = wordsReadTotal ?? 0;
   const totalBooks = books.length;
@@ -226,17 +252,44 @@ export const Painel: React.FC<PainelProps> = ({
             }}
           >
             <Upload size={14} />
-            <span>Adicionar Novo PDF</span>
+            <span>{activeFolderName ? 'Adicionar nesta pasta' : 'Adicionar Novo PDF'}</span>
           </button>
         </div>
+
+        {books.length > 0 && (
+          <FolderBar
+            books={books}
+            folders={folders}
+            activeFolderId={activeFolderId}
+            onSelect={onSelectFolder}
+            onCreate={(name) => onCreateFolder(name)}
+            onRename={onRenameFolder}
+            onDelete={onDeleteFolder}
+          />
+        )}
 
         {/* Grid de Livros com Progresso em Destaque ou Empty State */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: books.length === 0 ? '1fr' : 'repeat(auto-fill, minmax(min(270px, 100%), 1fr))',
+          gridTemplateColumns: visibleBooks.length === 0 ? '1fr' : 'repeat(auto-fill, minmax(min(270px, 100%), 1fr))',
           gap: '20px',
         }}>
-          {books.length === 0 ? (
+          {books.length > 0 && visibleBooks.length === 0 ? (
+            <div style={{
+              padding: '40px 24px',
+              borderRadius: '24px',
+              border: '1px dashed var(--border-subtle)',
+              textAlign: 'center',
+              color: '#94a3b8',
+              fontSize: '13px',
+              lineHeight: 1.6,
+            }}>
+              {activeFolderId === 'none'
+                ? 'Todos os livros já estão em pastas.'
+                : <>Esta pasta está vazia. Use o botão <FolderInput size={13} style={{ verticalAlign: '-2px' }} /> de um livro para
+                  trazê-lo para cá, ou envie um livro novo com a pasta aberta.</>}
+            </div>
+          ) : books.length === 0 ? (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -293,8 +346,10 @@ export const Painel: React.FC<PainelProps> = ({
               )}
             </div>
           ) : (
-            books.map((book) => {
+            visibleBooks.map((book) => {
             const isFinished = book.readingProgress >= 100;
+            // Em "Todos", mostra em que pasta o livro está
+            const bookFolderName = activeFolderId === 'all' && book.folderId ? folderNameById.get(book.folderId) : undefined;
             const isUploading = Boolean(book.isUploading);
 
             return (
@@ -468,9 +523,31 @@ export const Painel: React.FC<PainelProps> = ({
                 {/* Details */}
                 <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {book.author}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {book.author}
+                      </span>
+                      {bookFolderName && (
+                        <span style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          flexShrink: 1,
+                          minWidth: 0,
+                          maxWidth: '50%',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          color: '#10b981',
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          padding: '2px 6px',
+                          borderRadius: '6px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <Folder size={10} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{bookFolderName}</span>
+                        </span>
+                      )}
+                    </div>
                     <span style={{ fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
                       {isUploading ? 'Processando' : `~${book.durationMinutes} min`}
                     </span>
@@ -540,8 +617,28 @@ export const Painel: React.FC<PainelProps> = ({
                   </div>
                 </div>
 
-                {/* Ação do card: excluir */}
+                {/* Ações do card: mover para pasta e excluir */}
                 <div style={{ position: 'absolute', top: isMobile ? '18px' : '12px', right: isMobile ? '18px' : '12px', display: 'flex', gap: '6px', zIndex: 3 }}>
+                  {!isUploading && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMovingBook(book);
+                      }}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.65)',
+                        backdropFilter: 'blur(4px)',
+                        color: '#e2e8f0',
+                        padding: '6px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        cursor: 'pointer',
+                      }}
+                      title="Mover para pasta"
+                    >
+                      <FolderInput size={13} />
+                    </button>
+                  )}
                   {onDeleteBook && !isUploading && (
                     <button
                       onClick={(e) => {
@@ -715,6 +812,16 @@ export const Painel: React.FC<PainelProps> = ({
           </div>
         )}
       </div>
+
+      {movingBook && (
+        <MoveToFolderSheet
+          book={books.find((b) => b.id === movingBook.id) || movingBook}
+          folders={folders}
+          onMove={onMoveBookToFolder}
+          onCreate={(name, openIt) => onCreateFolder(name, openIt)}
+          onClose={() => setMovingBook(null)}
+        />
+      )}
     </div>
   );
 };

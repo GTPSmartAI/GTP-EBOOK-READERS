@@ -2,10 +2,14 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { VOICES, DEFAULT_VOICE_ID, findVoiceById, isFreeVoice } from './data/voices';
-import type { Book, ReaderSettings, VoiceOption, AppPage } from './types';
+import type { Book, BookFolder, ReaderSettings, VoiceOption, AppPage } from './types';
 import { speechEngine } from './services/speechEngine';
 import type { PlaybackStatus } from './services/speechEngine';
-import { fetchCloudBooks, deleteBookReal, uploadBookReal, fetchBookFullContent, syncReadingProgressToCloud, fetchReadingStats } from './services/api';
+import {
+  fetchCloudBooks, deleteBookReal, uploadBookReal, fetchBookFullContent, syncReadingProgressToCloud, fetchReadingStats,
+  fetchFolders, createFolder, renameFolder, deleteFolder, moveBookToFolder,
+} from './services/api';
+import type { FolderResult } from './services/api';
 import { getSessionUser, onSessionChange, refreshSession, logout } from './services/session';
 import type { SessionUser } from './services/session';
 import { readingTracker } from './services/readingTracker';
@@ -186,6 +190,10 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
 
   // Books list state (carregado exclusivamente do MariaDB/MinIO e IndexedDB)
   const [books, setBooks] = useState<Book[]>([]);
+
+  // Pastas da estante e a que está aberta no Painel ('all' = todos os livros, 'none' = sem pasta)
+  const [folders, setFolders] = useState<BookFolder[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string>('all');
 
   const [currentBookId, setCurrentBookId] = useState<string>('');
 
@@ -407,6 +415,46 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
     };
   }, [user?.id]);
 
+  // Pastas: cópia neste aparelho (para abrir sem internet) e a versão do servidor em seguida
+  const foldersCacheKey = user?.id ? `gtp_folders_${user.id}` : '';
+  useEffect(() => {
+    if (!foldersCacheKey) return;
+    try {
+      const cached = JSON.parse(localStorage.getItem(foldersCacheKey) || '[]');
+      setFolders(Array.isArray(cached) ? cached : []);
+    } catch {
+      setFolders([]); // cópia ilegível: espera o servidor
+    }
+    setActiveFolderId('all');
+    let isMounted = true;
+    fetchFolders().then((list) => {
+      if (isMounted && list) setFolders(list);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [foldersCacheKey]);
+  const foldersCacheOwnerRef = useRef('');
+  useEffect(() => {
+    // Logo depois de trocar de conta a lista ainda é a da conta anterior: não grava
+    if (foldersCacheOwnerRef.current !== foldersCacheKey) {
+      foldersCacheOwnerRef.current = foldersCacheKey;
+      return;
+    }
+    if (!foldersCacheKey) return;
+    try {
+      localStorage.setItem(foldersCacheKey, JSON.stringify(folders));
+    } catch {
+      // sem espaço: as pastas continuam vindo do servidor
+    }
+  }, [folders, foldersCacheKey]);
+  // Pasta aberta que deixou de existir (apagada em outro aparelho): volta para "Todos"
+  useEffect(() => {
+    if (activeFolderId !== 'all' && activeFolderId !== 'none' && !folders.some((f) => f.id === activeFolderId)) {
+      setActiveFolderId('all');
+    }
+  }, [folders, activeFolderId]);
+
   // Sync theme attribute to HTML tag
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
@@ -556,7 +604,8 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
           return;
         }
         setContentLoad(null);
-        setBooks((prev) => prev.map((b) => (b.id === fullBook.id ? fullBook : b)));
+        // A cópia do aparelho pode ter a pasta antiga: vale a da estante
+        setBooks((prev) => prev.map((b) => (b.id === fullBook.id ? { ...fullBook, folderId: b.folderId } : b)));
         startEngine(fullBook);
       })
       .catch((err) => {
@@ -784,7 +833,51 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
     }
   };
 
-  const handleBookCreated = (newBook: Book) => {
+  // ---- Pastas. As funções devolvem a mensagem de erro para a tela mostrar, ou null se deu certo.
+  // Esta devolve a pasta criada, para a janela "Mover para pasta" já colocar o livro nela
+  const handleCreateFolder = async (name: string, openIt = true): Promise<FolderResult<BookFolder>> => {
+    const r = await createFolder(name);
+    if (!r.ok) return r;
+    setFolders((prev) => [...prev, r.data].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
+    if (openIt) setActiveFolderId(r.data.id);
+    return r;
+  };
+
+  const handleRenameFolder = async (folderId: string, name: string): Promise<string | null> => {
+    const r = await renameFolder(folderId, name);
+    if (!r.ok) return r.error;
+    setFolders((prev) =>
+      prev.map((f) => (f.id === folderId ? r.data : f)).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    );
+    return null;
+  };
+
+  const handleDeleteFolder = async (folderId: string): Promise<string | null> => {
+    const r = await deleteFolder(folderId);
+    if (!r.ok) return r.error;
+    setFolders((prev) => prev.filter((f) => f.id !== folderId));
+    setBooks((prev) => prev.map((b) => (b.folderId === folderId ? { ...b, folderId: null } : b)));
+    setActiveFolderId('all');
+    return null;
+  };
+
+  const handleMoveBookToFolder = async (bookId: string, folderId: string | null): Promise<string | null> => {
+    const previous = books.find((b) => b.id === bookId)?.folderId ?? null;
+    if (previous === folderId) return null;
+    setBooks((prev) => prev.map((b) => (b.id === bookId ? { ...b, folderId } : b)));
+    const r = await moveBookToFolder(bookId, folderId);
+    if (!r.ok) {
+      setBooks((prev) => prev.map((b) => (b.id === bookId ? { ...b, folderId: previous } : b)));
+      return r.error;
+    }
+    return null;
+  };
+
+  // Livro enviado com uma pasta aberta entra nela
+  const uploadFolderId = activeFolderId !== 'all' && activeFolderId !== 'none' ? activeFolderId : null;
+
+  const handleBookCreated = (created: Book) => {
+    const newBook = created.isUploading ? { ...created, folderId: created.folderId ?? uploadFolderId } : created;
     setBooks((prev) => [newBook, ...prev.filter((b) => b.id !== newBook.id)]);
     setCurrentBookId(newBook.id);
     // Se o livro ainda estiver subindo em background, permanece no painel para ver o progresso
@@ -800,7 +893,8 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
         file,
         optimisticBook.title,
         optimisticBook.author,
-        coverBase64
+        coverBase64,
+        uploadFolderId
       );
 
       const readyBook: Book = {
@@ -869,6 +963,13 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
             onToggleFavoriteVoice={handleToggleFavoriteVoice}
             onPreviewVoice={handlePreviewVoice}
             onDeleteBook={handleDeleteBook}
+            folders={folders}
+            activeFolderId={activeFolderId}
+            onSelectFolder={setActiveFolderId}
+            onCreateFolder={handleCreateFolder}
+            onRenameFolder={handleRenameFolder}
+            onDeleteFolder={handleDeleteFolder}
+            onMoveBookToFolder={handleMoveBookToFolder}
             userName={user.full_name || user.username}
             wordsReadTotal={wordsReadTotal}
           />

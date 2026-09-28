@@ -45,6 +45,13 @@ from database import (
     add_reading_stats,
     get_reading_stats_rows,
     get_reading_totals,
+    get_user_folders,
+    get_folder,
+    folder_name_taken,
+    create_folder,
+    rename_folder,
+    delete_folder,
+    set_book_folder,
     DatabaseUnavailableError
 )
 from auth import (
@@ -404,6 +411,12 @@ def create_app() -> Flask:
             if not db_saved:
                 print(f"[Upload Warning] Livro {book_id} ficou só no cache local: falha ao gravar no MariaDB")
 
+            # Enviado com uma pasta aberta na estante: já entra nela
+            folder_id = (request.form.get("folder_id") or "").strip()
+            if db_saved and folder_id and get_folder(folder_id, user_id):
+                set_book_folder(book_id, user_id, folder_id)
+                full_data_payload["folder_id"] = folder_id
+
             book_out = _book_for_app({k: v for k, v in full_data_payload.items() if k != "content"})
             return jsonify({"success": True, "book": book_out, "db_saved": db_saved})
         except UnsupportedDocumentError as doc_err:
@@ -418,6 +431,69 @@ def create_app() -> Flask:
     def list_books():
         books = get_user_books(user_id=g.user["id"])
         return jsonify({"books": [_book_for_app(b) for b in books]})
+
+    # 5.0 Pastas da estante (organização do usuário; não mexe nos arquivos do MinIO)
+    def _folder_for_app(folder: dict) -> dict:
+        return {"id": folder["id"], "name": folder["name"], "created_at": str(folder.get("created_at") or "")}
+
+    def _folder_name_from_request():
+        """Nome válido da pasta, ou (None, resposta de erro)."""
+        name = " ".join(str((request.get_json(silent=True) or {}).get("name") or "").split())
+        if not name:
+            return None, (jsonify({"error": "Dê um nome para a pasta."}), 400)
+        if len(name) > 60:
+            return None, (jsonify({"error": "O nome da pasta pode ter até 60 caracteres."}), 400)
+        return name, None
+
+    @app.route("/api/folders", methods=["GET"])
+    @require_auth
+    def list_folders():
+        return jsonify({"folders": [_folder_for_app(f) for f in get_user_folders(g.user["id"])]})
+
+    @app.route("/api/folders", methods=["POST"])
+    @require_auth
+    def new_folder():
+        name, error = _folder_name_from_request()
+        if error:
+            return error
+        if len(get_user_folders(g.user["id"])) >= 100:
+            return jsonify({"error": "Limite de 100 pastas atingido."}), 400
+        if folder_name_taken(g.user["id"], name):
+            return jsonify({"error": "Você já tem uma pasta com esse nome."}), 409
+        return jsonify({"folder": _folder_for_app(create_folder(g.user["id"], name))}), 201
+
+    @app.route("/api/folders/<folder_id>", methods=["PATCH"])
+    @require_auth
+    def update_folder(folder_id):
+        if not get_folder(folder_id, g.user["id"]):
+            return jsonify({"error": "Pasta não encontrada."}), 404
+        name, error = _folder_name_from_request()
+        if error:
+            return error
+        if folder_name_taken(g.user["id"], name, except_id=folder_id):
+            return jsonify({"error": "Você já tem uma pasta com esse nome."}), 409
+        rename_folder(folder_id, g.user["id"], name)
+        return jsonify({"folder": _folder_for_app(get_folder(folder_id, g.user["id"]))})
+
+    @app.route("/api/folders/<folder_id>", methods=["DELETE"])
+    @require_auth
+    def remove_folder(folder_id):
+        if not get_folder(folder_id, g.user["id"]):
+            return jsonify({"error": "Pasta não encontrada."}), 404
+        delete_folder(folder_id, g.user["id"])
+        return jsonify({"success": True})
+
+    @app.route("/api/books/<book_id>/folder", methods=["PUT"])
+    @require_auth
+    def move_book_to_folder(book_id):
+        meta = get_book_meta(book_id)
+        if not meta or meta.get("user_id") != g.user["id"]:
+            return jsonify({"error": "Livro não encontrado na sua estante."}), 404
+        folder_id = (request.get_json(silent=True) or {}).get("folder_id") or None
+        if folder_id and not get_folder(folder_id, g.user["id"]):
+            return jsonify({"error": "Pasta não encontrada."}), 404
+        set_book_folder(book_id, g.user["id"], folder_id)
+        return jsonify({"success": True, "folder_id": folder_id})
 
     # 5.1 Deletar Livro (MariaDB + MinIO) — só o dono
     @app.route("/api/books/<book_id>", methods=["DELETE"])
