@@ -15,7 +15,7 @@
 
 ## Como gerar o APK
 
-Na raiz do projeto, no PowerShell:
+**O deploy já gera o APK sozinho** (`deploy\deploy.ps1`, veja [deploy.md](deploy.md)). Para gerar só o APK, sem publicar, na raiz do projeto, no PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1

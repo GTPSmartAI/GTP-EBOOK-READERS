@@ -2,16 +2,17 @@
 #   frontend -> https://ebook.iagtp.com.br
 #   backend  -> https://backend-api.iagtp.com.br
 #
-# Depois do deploy, salva as mudanças no Git e envia para o GitHub (origin), na branch atual.
+# Depois do deploy, gera um APK novo (pasta apk\) e salva as mudanças no Git e no GitHub (origin), na branch atual.
 #
 # Uso (na raiz do projeto):
-#   powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1                          # deploy + GitHub
+#   powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1                          # deploy + APK + GitHub
 #   powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -Message "o que mudou"   # mensagem do commit
-#   powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -NoGit                   # só o deploy
+#   powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -NoApk                   # sem gerar o APK
+#   powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -NoGit                   # sem GitHub
 #   powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -SyncUploads             # também envia backend\uploads
 #
 # Requer a chave SSH ~/.ssh/id_ed25519 autorizada na VPS (login sem senha) e acesso de push ao GitHub.
-param([switch]$SyncUploads, [switch]$NoGit, [string]$Message = '')
+param([switch]$SyncUploads, [switch]$NoGit, [switch]$NoApk, [string]$Message = '')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -92,6 +93,18 @@ try {
     Write-Host "== Pronto: https://ebook.iagtp.com.br" -ForegroundColor Green
 } finally {
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+}
+
+# ------------------------------------------------------------------ APK
+# O app leva o site dentro dele: toda mudança no frontend precisa de APK novo.
+# Roda depois do envio porque o build:android sobrescreve o frontend\dist (que já foi empacotado).
+if (-not $NoApk) {
+    Write-Host "== APK Android" -ForegroundColor Cyan
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\build-apk.ps1"
+    if ($LASTEXITCODE -ne 0) {
+        # O site já foi publicado; o GitHub segue normalmente
+        Write-Host "O deploy foi feito, mas o APK falhou (código $LASTEXITCODE). Gere de novo com deploy\build-apk.ps1." -ForegroundColor Yellow
+    }
 }
 
 # ------------------------------------------------------------------ GitHub

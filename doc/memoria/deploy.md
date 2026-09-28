@@ -24,14 +24,15 @@ Para também enviar a pasta `backend\uploads` (livros e caches locais), use `-Sy
 powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -SyncUploads
 ```
 
-O script faz tudo sozinho, em uns 2 minutos:
+O script faz tudo sozinho, em uns 3 minutos:
 
 1. Gera o frontend (`npm run build`) já apontando para `https://backend-api.iagtp.com.br`, pela variável `VITE_API_URL`.
 2. Empacota o backend, sem `.env`, `uploads`, `models` e `scratch`.
 3. Gera o arquivo de ambiente de produção a partir do `backend\.env` local, trocando alguns valores (veja abaixo).
 4. Envia tudo para a VPS por `scp` e roda `deploy/remote_deploy.sh` lá.
 5. Na VPS: gera a imagem Docker `ebook-api:<data-hora>`, atualiza os serviços e apaga imagens antigas (mantém as 2 mais recentes).
-6. **GitHub:** depois do deploy dar certo, faz `git add -A`, um commit (mensagem `deploy <data-hora>` ou a de `-Message "..."`) e `git push` para `origin` na branch atual (repositório `GTPSmartAI/GTP-EBOOK-READERS`). `-NoGit` pula esta parte.
+6. **APK:** roda o `deploy\build-apk.ps1` e deixa um APK novo em `apk\aedolia-debug-<data>.apk` (veja [apk.md](apk.md)). Se o APK falhar, o script avisa em amarelo e segue para o GitHub; o site já está atualizado. `-NoApk` pula esta parte (útil quando só o backend mudou).
+7. **GitHub:** depois do deploy dar certo, faz `git add -A`, um commit (mensagem `deploy <data-hora>` ou a de `-Message "..."`) e `git push` para `origin` na branch atual (repositório `GTPSmartAI/GTP-EBOOK-READERS`). `-NoGit` pula esta parte.
    - Trava de segurança: se as mudanças tiverem arquivo `.env`, `.keystore`, `.jks`, `keystore.properties`, chave SSH, linha no formato `ALGO_PASSWORD=valor` ou senha entre aspas no código (com letras e números), o script **não envia** para o GitHub e lista o que achou. O deploy na VPS já terá sido feito.
    - Se só o GitHub falhar (sem internet, sem permissão), o script avisa em amarelo; o site já está atualizado.
 
