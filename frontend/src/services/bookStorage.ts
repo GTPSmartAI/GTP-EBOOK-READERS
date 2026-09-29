@@ -127,6 +127,7 @@ export function saveBooksMetadataSafe(books: Book[], userId?: string): void {
       durationMinutes: b.durationMinutes,
       readingProgress: b.readingProgress,
       lastReadSentenceIndex: b.lastReadSentenceIndex,
+      progressReadAt: b.progressReadAt || 0,
       fileUrl: b.fileUrl,
       chapters: b.chapters || [],
       userId: b.userId || userId,
@@ -146,7 +147,7 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
   const loadedList: Book[] = [];
 
   // Progresso de leitura é gravado nos metadados a cada frase; a cópia completa no IndexedDB fica com o valor antigo
-  const progressById = new Map<string, { lastReadSentenceIndex?: number; readingProgress?: number; folderId?: string | null }>();
+  const progressById = new Map<string, { lastReadSentenceIndex?: number; readingProgress?: number; progressReadAt?: number; folderId?: string | null }>();
   try {
     const savedMeta = localStorage.getItem(userId ? `${META_KEY}_${userId}` : META_KEY);
     const parsed = savedMeta ? JSON.parse(savedMeta) : [];
@@ -181,6 +182,7 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
               ...stored,
               lastReadSentenceIndex: progress.lastReadSentenceIndex ?? stored.lastReadSentenceIndex,
               readingProgress: progress.readingProgress ?? stored.readingProgress,
+              progressReadAt: progress.progressReadAt ?? stored.progressReadAt,
               // A pasta também muda sem regravar a cópia completa
               folderId: progress.folderId !== undefined ? progress.folderId : stored.folderId,
             }
@@ -217,6 +219,7 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
           durationMinutes: m.durationMinutes || 1,
           readingProgress: m.readingProgress || 0,
           lastReadSentenceIndex: m.lastReadSentenceIndex || 0,
+          progressReadAt: m.progressReadAt || 0,
           fileUrl: m.fileUrl,
           uploadedAt: m.uploadedAt || new Date().toISOString(),
           userId: m.userId,

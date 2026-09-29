@@ -21,6 +21,7 @@ export interface Book {
   totalWords: number;
   readingProgress: number; // percentage 0-100
   lastReadSentenceIndex: number;
+  progressReadAt?: number; // quando o ponto de leitura mudou (ms); entre aparelhos vale o mais recente
   durationMinutes: number;
   uploadedAt: string;
   fileUrl?: string;

@@ -138,6 +138,10 @@ _EXTRA_COLUMNS = {
         # Identificador fixo da conta Google (campo "sub" do token), para o login com Google
         "google_sub": "VARCHAR(64) NULL",
     },
+    "reading_progress": {
+        # Quando o ponto de leitura mudou no aparelho (ms desde 1970). Entre dois aparelhos vale o mais recente.
+        "read_at_ms": "BIGINT NOT NULL DEFAULT 0",
+    },
 }
 
 _NEW_TABLES = {
@@ -325,8 +329,9 @@ def get_user_books(user_id: str, include_content: bool = False) -> List[Dict[str
         return []
     db = get_mariadb_client()
     try:
-        base_cols = "b.`id`, b.`user_id`, b.`title`, b.`author`, b.`cover_gradient`, b.`cover_image_url`, b.`cover_key`, b.`file_key`, b.`storage_prefix`, b.`folder_id`, b.`content_rev`, b.`type`, b.`total_words`, b.`duration_minutes`, b.`file_url`, b.`created_at`, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`"
-        cols = "b.*, COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`" if include_content else base_cols
+        progress_cols = "COALESCE(rp.`progress_percentage`, 0) AS `reading_progress`, COALESCE(rp.`last_sentence_index`, 0) AS `last_read_sentence_index`, COALESCE(rp.`read_at_ms`, 0) AS `progress_read_at_ms`"
+        base_cols = "b.`id`, b.`user_id`, b.`title`, b.`author`, b.`cover_gradient`, b.`cover_image_url`, b.`cover_key`, b.`file_key`, b.`storage_prefix`, b.`folder_id`, b.`content_rev`, b.`type`, b.`total_words`, b.`duration_minutes`, b.`file_url`, b.`created_at`, " + progress_cols
+        cols = "b.*, " + progress_cols if include_content else base_cols
         join_clause = "LEFT JOIN `reading_progress` rp ON b.`id` = rp.`book_id` AND rp.`user_id` = %s"
         sql = f"SELECT {cols} FROM `books` b {join_clause} WHERE b.`user_id` = %s ORDER BY b.`created_at` DESC"
         return db.execute_query(sql, (user_id, user_id))
@@ -431,22 +436,28 @@ def set_book_folder(book_id: str, user_id: str, folder_id: Optional[str]) -> boo
     ) > 0
 
 
-def save_reading_progress(user_id: str, book_id: str, last_sentence_index: int, progress_percentage: int) -> bool:
-    """Salva o progresso de leitura no MariaDB."""
+def save_reading_progress(user_id: str, book_id: str, last_sentence_index: int, progress_percentage: int,
+                          read_at_ms: int) -> bool:
+    """
+    Salva o ponto de leitura. Vale o mais recente (read_at_ms, horário em que a pessoa leu no aparelho):
+    um aparelho que ficou parado com um ponto antigo não passa por cima do que foi lido em outro.
+    """
     db = get_mariadb_client()
     try:
         import time
         prog_id = f"prog-{int(time.time() * 1000)}"
+        # A ordem importa: read_at_ms é trocado por último, depois de comparar com o valor antigo
         sql = """
-        INSERT INTO `reading_progress` (`id`, `user_id`, `book_id`, `last_sentence_index`, `progress_percentage`, `updated_at`)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO `reading_progress` (`id`, `user_id`, `book_id`, `last_sentence_index`, `progress_percentage`, `updated_at`, `read_at_ms`)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
-            `last_sentence_index` = VALUES(`last_sentence_index`),
-            `progress_percentage` = VALUES(`progress_percentage`),
-            `updated_at` = VALUES(`updated_at`)
+            `last_sentence_index` = IF(VALUES(`read_at_ms`) >= `read_at_ms`, VALUES(`last_sentence_index`), `last_sentence_index`),
+            `progress_percentage` = IF(VALUES(`read_at_ms`) >= `read_at_ms`, VALUES(`progress_percentage`), `progress_percentage`),
+            `updated_at` = IF(VALUES(`read_at_ms`) >= `read_at_ms`, VALUES(`updated_at`), `updated_at`),
+            `read_at_ms` = GREATEST(`read_at_ms`, VALUES(`read_at_ms`))
         """
         now = get_now_br().strftime("%Y-%m-%d %H:%M:%S")
-        db.execute_non_query(sql, (prog_id, user_id, book_id, last_sentence_index, progress_percentage, now))
+        db.execute_non_query(sql, (prog_id, user_id, book_id, last_sentence_index, progress_percentage, now, read_at_ms))
         return True
     except Exception as e:
         logger.error(f"Erro ao salvar progresso no MariaDB: {e}")

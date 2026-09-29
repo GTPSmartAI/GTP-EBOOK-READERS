@@ -29,6 +29,7 @@
 - O backend não informa o tempo de cada palavra. O `speechEngine.getSpokenWord()` estima a palavra pela posição no áudio (tempo atual ÷ duração), dando a cada palavra um tempo proporcional ao número de letras.
 - Cada áudio sabe quais palavras do trecho cobre (`WordSegment`): a frase inteira, o início ou o resto de uma frase dividida, ou a partir da palavra clicada.
 - O `ReaderView` troca a classe `spoken` direto no DOM a cada quadro, sem re-renderizar o React.
+- **Rolagem que acompanha a voz (29/09/2026):** quando a palavra lida passa para outra linha, o texto sobe na hora para essa linha ficar a 35% da altura da tela (`FOLLOW_LINE_AT`). Antes o texto só subia quando a frase chegava perto do fim da tela, e o usuário achava que demorava. Rolar com o dedo solta o acompanhamento por 12 s.
 
 ## Pré-carregamento (`frontend/src/services/speechEngine.ts`)
 

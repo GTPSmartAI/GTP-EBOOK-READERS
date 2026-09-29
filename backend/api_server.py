@@ -617,11 +617,17 @@ def create_app() -> Flask:
         try:
             sentence_idx = max(0, int(data.get("last_sentence_index", 0)))
             pct = max(0, min(100, int(data.get("progress_percentage", 0))))
+            read_at_ms = int(data.get("read_at_ms") or 0)
         except (TypeError, ValueError):
             return jsonify({"error": "Valores inválidos"}), 400
         if not _can_read(get_book_meta(book_id)):
             return jsonify({"error": "Livro não encontrado."}), 404
-        saved = save_reading_progress(g.user["id"], book_id, sentence_idx, pct)
+        # Horário do aparelho; sem ele (app antigo) ou adiantado demais, vale a hora do servidor
+        import time
+        now_ms = int(time.time() * 1000)
+        if read_at_ms <= 0 or read_at_ms > now_ms + 60_000:
+            read_at_ms = now_ms
+        saved = save_reading_progress(g.user["id"], book_id, sentence_idx, pct, read_at_ms)
         return jsonify({"success": saved})
 
     # ------------------------------------------------------------------ 5.4 Estatísticas de leitura

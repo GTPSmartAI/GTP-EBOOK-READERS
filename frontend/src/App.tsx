@@ -63,18 +63,31 @@ try {
   localStorage.removeItem('gtp_reader_books');
 } catch {}
 
+type ProgressFields = Pick<Book, 'lastReadSentenceIndex' | 'readingProgress' | 'progressReadAt'>;
+
+/**
+ * Ponto de leitura que vale entre duas cópias do livro (aparelho x servidor): o mais recente.
+ * Cópias de antes do horário existir (progressReadAt 0) ficam com o maior progresso, como antes.
+ */
+function newestProgress(a: ProgressFields, b: ProgressFields): ProgressFields {
+  const pick = (x: ProgressFields) => ({
+    lastReadSentenceIndex: x.lastReadSentenceIndex || 0,
+    readingProgress: x.readingProgress || 0,
+    progressReadAt: x.progressReadAt || 0,
+  });
+  const aAt = a.progressReadAt || 0;
+  const bAt = b.progressReadAt || 0;
+  if (aAt || bAt) return pick(aAt >= bAt ? a : b);
+  return pick((a.readingProgress || 0) >= (b.readingProgress || 0) ? a : b);
+}
+
 /**
  * Combina o livro vindo do servidor (metadados atualizados) com o que já existe neste navegador:
- * conteúdo já carregado e progresso de leitura não podem ser perdidos por uma listagem que não os traz.
+ * conteúdo já carregado não pode ser perdido por uma listagem que não o traz, e o ponto de leitura
+ * que vale é o mais recente dos dois.
  */
 function mergeLocalBookState(base: Book, local: Book): Book {
   const hasLocalContent = Boolean(local.sentences?.length) && (local.contentRev ?? 0) === (base.contentRev ?? 0);
-  const localProg = local.readingProgress || 0;
-  const baseProg = base.readingProgress || 0;
-  const bestProg = Math.max(localProg, baseProg);
-  const bestSentenceIndex = localProg >= baseProg
-    ? (local.lastReadSentenceIndex ?? base.lastReadSentenceIndex ?? 0)
-    : (base.lastReadSentenceIndex ?? 0);
 
   return {
     ...base,
@@ -86,8 +99,7 @@ function mergeLocalBookState(base: Book, local: Book): Book {
     sentenceKinds: hasLocalContent ? local.sentenceKinds : base.sentenceKinds,
     structureVersion: hasLocalContent ? local.structureVersion : base.structureVersion,
     chapters: hasLocalContent ? local.chapters : base.chapters,
-    lastReadSentenceIndex: bestSentenceIndex,
-    readingProgress: bestProg,
+    ...newestProgress(local, base),
   };
 }
 
@@ -111,10 +123,15 @@ const sameContentRev = (a: Book, b: Book) => (a.contentRev ?? 0) === (b.contentR
  */
 async function loadFullBook(book: Book, onProgress?: (fraction: number) => void): Promise<Book | null> {
   const local = await getBookFull(book.id);
-  if (local && hasStructuredContent(local) && sameContentRev(local, book)) return local;
+  // A cópia completa guardada no aparelho tem o ponto de leitura de quando foi gravada:
+  // vale o da estante (que já passou pelo servidor), se for mais recente
+  const progress = local ? newestProgress(book, local) : newestProgress(book, book);
+  if (local && hasStructuredContent(local) && sameContentRev(local, book)) {
+    return { ...local, ...progress, lastReadSentenceIndex: Math.min(progress.lastReadSentenceIndex, local.sentences.length - 1) };
+  }
 
-  const lastIndex = book.lastReadSentenceIndex || local?.lastReadSentenceIndex || 0;
-  const readingProgress = book.readingProgress || local?.readingProgress || 0;
+  const lastIndex = progress.lastReadSentenceIndex;
+  const readingProgress = progress.readingProgress;
 
   const cloud = await fetchBookFullContent(book.id, onProgress);
   if (cloud && cloud.sentences.length > 0) {
@@ -132,6 +149,7 @@ async function loadFullBook(book: Book, onProgress?: (fraction: number) => void)
       coverImage: book.coverImage || cloud.coverImage,
       lastReadSentenceIndex: Math.min(lastIndex, cloud.sentences.length - 1),
       readingProgress,
+      progressReadAt: progress.progressReadAt,
     };
     // Gravar um livro de dezenas de MB no IndexedDB demora no celular: a leitura não espera por isso
     saveBookFull(merged).catch((err) => console.warn('Falha ao salvar o livro neste aparelho:', err));
@@ -139,7 +157,9 @@ async function loadFullBook(book: Book, onProgress?: (fraction: number) => void)
   }
 
   // Backend indisponível: usa a cópia antiga, com o progresso mais recente
-  return local && local.sentences?.length ? { ...local, lastReadSentenceIndex: lastIndex, readingProgress } : null;
+  return local && local.sentences?.length
+    ? { ...local, ...progress, lastReadSentenceIndex: Math.min(lastIndex, local.sentences.length - 1) }
+    : null;
 }
 
 /**
@@ -380,41 +400,110 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
     });
   }, [activePage]);
 
-  // Busca os livros do usuário no servidor (todo livro é privado)
-  useEffect(() => {
-    let isMounted = true;
-    async function loadUserBooks() {
-      try {
-        const cloudBooks = await fetchCloudBooks();
-        if (!isMounted) return;
-        if (cloudBooks === null) {
-          // Servidor/banco fora do ar: mantém a estante local em vez de apagar tudo
-          console.warn('Não foi possível atualizar a estante pelo servidor; usando os livros salvos neste navegador.');
-          return;
-        }
-        setBooks((prev) => {
-          const localById = new Map(prev.map((b) => [b.id, b]));
-          const merged = cloudBooks.map((cloud) => {
-            const local = localById.get(cloud.id);
-            return local ? mergeLocalBookState(cloud, local) : cloud;
-          });
-          // Uploads em andamento ainda não existem no servidor
-          const uploading = prev.filter((b) => b.isUploading && !cloudBooks.some((c) => c.id === b.id));
-          return [...uploading, ...merged];
-        });
-        if (cloudBooks.length > 0) {
-          if (!currentBookId || !cloudBooks.some((b) => b.id === currentBookId)) {
-            setCurrentBookId(cloudBooks[0].id);
-          }
-        }
-      } catch (err) {
-        console.warn('Erro ao carregar livros da nuvem:', err);
-      }
+  // ------------------------------------------------------------------ ponto de leitura entre aparelhos
+  // Refs: os ouvintes abaixo são registrados uma vez só e precisam dos valores atuais
+  const booksRef = useRef(books);
+  booksRef.current = books;
+  const currentBookIdRef = useRef(currentBookId);
+  currentBookIdRef.current = currentBookId;
+
+  // Ponto de leitura ainda não enviado ao servidor (envio agrupado a cada 1,5 s durante a leitura)
+  const pendingProgressRef = useRef<{ bookId: string; index: number; progress: number; readAt: number } | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushProgress = () => {
+    if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+    progressTimerRef.current = null;
+    const pending = pendingProgressRef.current;
+    pendingProgressRef.current = null;
+    if (pending) syncReadingProgressToCloud(pending.bookId, pending.index, pending.progress, pending.readAt);
+  };
+
+  const isEnginePlaying = () => {
+    const status = speechEngine.getStatus();
+    return status === 'playing' || status === 'buffering';
+  };
+
+  /**
+   * Busca a estante e os pontos de leitura no servidor (todo livro é privado): ao abrir, ao voltar para o app
+   * e a cada 30 s com a tela aberta. Em cada livro vale o ponto lido por último, em qualquer aparelho.
+   * Se foi em outro aparelho e a leitura aqui está parada, o livro aberto vai para lá.
+   */
+  const syncWithCloud = async () => {
+    const cloudBooks = await fetchCloudBooks();
+    if (cloudBooks === null) {
+      // Servidor/banco fora do ar: mantém a estante local em vez de apagar tudo
+      console.warn('Não foi possível atualizar a estante pelo servidor; usando os livros salvos neste navegador.');
+      return;
+    }
+    const openId = currentBookIdRef.current;
+    const before = booksRef.current;
+    const playingHere = isEnginePlaying();
+
+    setBooks((prev) => {
+      const localById = new Map(prev.map((b) => [b.id, b]));
+      const merged = cloudBooks.map((cloud) => {
+        const local = localById.get(cloud.id);
+        if (!local) return cloud;
+        const book = mergeLocalBookState(cloud, local);
+        // Tocando aqui: o ponto deste aparelho continua valendo até a leitura parar
+        return playingHere && cloud.id === openId ? { ...book, ...newestProgress(local, local) } : book;
+      });
+      // Uploads em andamento ainda não existem no servidor
+      const uploading = prev.filter((b) => b.isUploading && !cloudBooks.some((c) => c.id === b.id));
+      return [...uploading, ...merged];
+    });
+    if (cloudBooks.length > 0 && (!openId || !cloudBooks.some((b) => b.id === openId))) {
+      setCurrentBookId(cloudBooks[0].id);
     }
 
-    loadUserBooks();
+    for (const cloud of cloudBooks) {
+      const local = before.find((b) => b.id === cloud.id);
+      if (!local) continue;
+      if ((local.progressReadAt || 0) > (cloud.progressReadAt || 0)) {
+        // Lido aqui depois (ex.: sem internet): o servidor recebe este ponto
+        syncReadingProgressToCloud(cloud.id, local.lastReadSentenceIndex || 0, local.readingProgress || 0, local.progressReadAt || 0);
+      } else if (
+        cloud.id === openId &&
+        !playingHere &&
+        (cloud.progressReadAt || 0) > (local.progressReadAt || 0) &&
+        speechEngine.getBookId() === cloud.id &&
+        local.sentences?.length
+      ) {
+        const index = Math.min(cloud.lastReadSentenceIndex || 0, local.sentences.length - 1);
+        if (index !== speechEngine.getCurrentIndex()) {
+          speechEngine.setPosition(index);
+          setCurrentSentenceIndex(index);
+        }
+      }
+    }
+  };
+  const syncWithCloudRef = useRef(syncWithCloud);
+  syncWithCloudRef.current = syncWithCloud;
+  const flushProgressRef = useRef(flushProgress);
+  flushProgressRef.current = flushProgress;
+
+  useEffect(() => {
+    const sync = () => {
+      syncWithCloudRef.current().catch((err) => console.warn('Erro ao carregar livros da nuvem:', err));
+    };
+    sync();
+    // Saiu do app: envia já o ponto de leitura; voltou: busca o que foi lido nos outros aparelhos
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') sync();
+      else flushProgressRef.current();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isEnginePlaying()) sync();
+    }, 30000);
+    const nativeSubs = Capacitor.isNativePlatform()
+      ? [CapApp.addListener('resume', sync), CapApp.addListener('pause', () => flushProgressRef.current())]
+      : [];
     return () => {
-      isMounted = false;
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(timer);
+      nativeSubs.forEach((sub) => sub.then((h) => h.remove()));
+      flushProgressRef.current();
     };
   }, [user?.id]);
 
@@ -467,22 +556,11 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
   // Salva metadados leves (inclui o progresso de leitura) no localStorage.
   // Só depois de ler o que já estava salvo: senão a lista vazia do início apagaria o progresso anterior.
   const localBooksLoadedRef = useRef(false);
-  const cloudSyncTimeoutRef = useRef<Record<string, any>>({});
 
   useEffect(() => {
     if (!localBooksLoadedRef.current) return;
     saveBooksMetadataSafe(books, user?.id);
   }, [books, user?.id]);
-
-  // Se houver progresso salvo localmente (ex: 97%), sincroniza com a nuvem no MariaDB para refletir em outros navegadores
-  useEffect(() => {
-    if (!user?.id || books.length === 0) return;
-    books.forEach((b) => {
-      if (b.readingProgress && b.readingProgress > 0) {
-        syncReadingProgressToCloud(b.id, b.lastReadSentenceIndex || 0, b.readingProgress);
-      }
-    });
-  }, [user?.id, books.length > 0]);
 
   // Carrega livros persistidos locais filtrando pelo usuário
   useEffect(() => {
@@ -518,28 +596,29 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
         if (currentBook?.id) {
           const totalSentences = Math.max(1, (currentBook.sentences?.length || 1) - 1);
           const progress = Math.round((idx / totalSentences) * 100);
+          const readAt = Date.now();
           setBooks((prev) =>
             prev.map((b) => {
               if (b.id === currentBook.id) {
-                return { ...b, lastReadSentenceIndex: idx, readingProgress: progress };
+                return { ...b, lastReadSentenceIndex: idx, readingProgress: progress, progressReadAt: readAt };
               }
               return b;
             })
           );
 
-          // Sincroniza com a nuvem (debounced a cada 1.5s durante a leitura)
-          if (user?.id) {
-            if (cloudSyncTimeoutRef.current[currentBook.id]) {
-              clearTimeout(cloudSyncTimeoutRef.current[currentBook.id]);
-            }
-            cloudSyncTimeoutRef.current[currentBook.id] = setTimeout(() => {
-              syncReadingProgressToCloud(currentBook.id, idx, progress);
-              delete cloudSyncTimeoutRef.current[currentBook.id];
-            }, 1500);
+          // Envia ao servidor agrupado (a cada 1,5 s durante a leitura); outro livro pendente vai na hora
+          if (pendingProgressRef.current && pendingProgressRef.current.bookId !== currentBook.id) flushProgressRef.current();
+          pendingProgressRef.current = { bookId: currentBook.id, index: idx, progress, readAt };
+          if (!progressTimerRef.current) {
+            progressTimerRef.current = setTimeout(() => flushProgressRef.current(), 1500);
           }
         }
       },
-      onStatusChange: (status) => setPlaybackStatus(status),
+      onStatusChange: (status) => {
+        setPlaybackStatus(status);
+        // Pausou: o ponto de leitura vai já, para aparecer nos outros aparelhos
+        if (status !== 'playing' && status !== 'buffering') flushProgressRef.current();
+      },
       onComplete: () => setPlaybackStatus('idle'),
       onWordsRead: (words) => readingTracker.addWords(words),
       onNotice: (message) => showNotice(message),
@@ -576,7 +655,10 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
     }
 
     const startEngine = (book: Book) => {
-      const startIndex = Math.min(book.lastReadSentenceIndex || 0, Math.max(0, book.sentences.length - 1));
+      // Enquanto o texto baixava, o servidor pode ter trazido um ponto de leitura mais novo
+      const shelf = booksRef.current.find((b) => b.id === book.id);
+      const position = shelf ? newestProgress(book, shelf) : book;
+      const startIndex = Math.min(position.lastReadSentenceIndex || 0, Math.max(0, book.sentences.length - 1));
       setCurrentSentenceIndex(startIndex);
       speechEngine.setBook(book.id);
       speechEngine.setSentences(book.sentences, startIndex, book.paragraphStarts);
@@ -608,7 +690,9 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
         }
         setContentLoad(null);
         // A cópia do aparelho pode ter a pasta antiga: vale a da estante
-        setBooks((prev) => prev.map((b) => (b.id === fullBook.id ? { ...fullBook, folderId: b.folderId } : b)));
+        setBooks((prev) =>
+          prev.map((b) => (b.id === fullBook.id ? { ...fullBook, folderId: b.folderId, ...newestProgress(fullBook, b) } : b))
+        );
         startEngine(fullBook);
       })
       .catch((err) => {
@@ -662,7 +746,8 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
   // Botões do player (notificação, tela de bloqueio, fones). Refs: o ouvinte é registrado uma vez só.
   const playerCommandRef = useRef<(command: string, positionMs: number) => void>(() => {});
   playerCommandRef.current = (command, positionMs) => {
-    const isPlaying = playbackStatus === 'playing' || playbackStatus === 'buffering';
+    // O estado do motor, não o da tela: com o app em segundo plano a tela pode estar atrasada
+    const isPlaying = isEnginePlaying();
     if (command === 'toggle') speechEngine.togglePlayPause();
     else if (command === 'play' && !isPlaying) speechEngine.togglePlayPause();
     else if (command === 'pause' && isPlaying) speechEngine.togglePlayPause();
@@ -676,6 +761,48 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
     }
   };
   useEffect(() => onPlayerCommand((command, positionMs) => playerCommandRef.current(command, positionMs)), []);
+
+  // Navegador (computador ou celular): teclas de mídia e fones controlam a leitura pelo Media Session.
+  // No app Android quem faz isso é o PlaybackService.
+  useEffect(() => {
+    if (isNativeApp || !('mediaSession' in navigator)) return;
+    const handlers: [MediaSessionAction, () => void][] = [
+      ['play', () => playerCommandRef.current('play', 0)],
+      ['pause', () => playerCommandRef.current('pause', 0)],
+      ['stop', () => playerCommandRef.current('pause', 0)],
+      ['seekbackward', () => playerCommandRef.current('back', 0)],
+      ['seekforward', () => playerCommandRef.current('forward', 0)],
+      ['previoustrack', () => playerCommandRef.current('back', 0)],
+      ['nexttrack', () => playerCommandRef.current('forward', 0)],
+    ];
+    for (const [action, handler] of handlers) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // ação não suportada neste navegador
+      }
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try {
+          navigator.mediaSession.setActionHandler(action, null);
+        } catch {}
+      }
+    };
+  }, []);
+  useEffect(() => {
+    if (isNativeApp || !('mediaSession' in navigator)) return;
+    const playing = playbackStatus === 'playing' || playbackStatus === 'buffering';
+    navigator.mediaSession.playbackState = playbackStatus === 'idle' ? 'none' : playing ? 'playing' : 'paused';
+    if (currentBook && typeof MediaMetadata !== 'undefined') {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: chapterSpan.title || currentBook.title,
+        artist: currentBook.title,
+        album: 'Aedolia',
+        artwork: currentBook.coverImage ? [{ src: currentBook.coverImage }] : [],
+      });
+    }
+  }, [playbackStatus, currentBook?.id, currentBook?.title, currentBook?.coverImage, chapterSpan.title]);
 
   // Audio Handlers
   const handleTogglePlay = () => {

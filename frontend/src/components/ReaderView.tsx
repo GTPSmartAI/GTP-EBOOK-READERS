@@ -26,6 +26,7 @@ const WINDOW_AFTER = 70; // parágrafos abaixo
 const EXTEND_BY = 50; // parágrafos acrescentados quando a rolagem chega perto da borda
 const MAX_RENDERED = 260; // acima disso, descarta o lado mais distante da tela
 const EDGE_PX = 1600; // distância da borda que dispara o carregamento
+const FOLLOW_LINE_AT = 0.35; // altura da tela (fração, de cima) onde fica a linha que a voz está lendo
 
 const FONT_FAMILY = { sans: 'var(--font-sans)', serif: 'var(--font-serif)', mono: 'var(--font-mono)' };
 const MAX_WIDTH = { narrow: '620px', medium: '740px', wide: '900px', full: '100%' };
@@ -248,11 +249,27 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     if (detachTimeoutRef.current) clearTimeout(detachTimeoutRef.current);
   }, []);
 
-  // Destaque da palavra falada: muda só a classe no DOM, a cada quadro (sem re-renderizar o React)
+  // Destaque da palavra falada: muda só a classe no DOM, a cada quadro (sem re-renderizar o React).
+  // Acompanhar a voz: a cada linha nova, o texto sobe para a linha lida ficar sempre na mesma altura da tela.
+  const followRef = useRef(false);
+  followRef.current = settings.autoScroll && !isDetachedFromVoice;
   useEffect(() => {
     let frame = 0;
     let lastId = '';
     let lastEl: HTMLElement | null = null;
+    let lastLineTop = NaN;
+    const followLine = (el: HTMLElement) => {
+      const container = scrollRef.current;
+      if (!container || !followRef.current) return;
+      const box = container.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
+      // Posição da linha no texto (não na tela): muda só quando a palavra passa para outra linha
+      const lineTop = rect.top - box.top + container.scrollTop;
+      if (Math.abs(lineTop - lastLineTop) < rect.height / 2) return;
+      lastLineTop = lineTop;
+      const delta = rect.top - (box.top + box.height * FOLLOW_LINE_AT);
+      if (Math.abs(delta) > 2) container.scrollBy({ top: delta, behavior: 'smooth' });
+    };
     const tick = () => {
       const spoken = speechEngine.getSpokenWord();
       const id = spoken ? `word-anchor-${spoken.sentenceIndex}-${spoken.wordIndex}` : '';
@@ -261,6 +278,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
         lastEl = id ? document.getElementById(id) : null;
         lastEl?.classList.add('spoken');
         lastId = id;
+        if (lastEl) followLine(lastEl);
+        else lastLineTop = NaN;
       }
       frame = requestAnimationFrame(tick);
     };
@@ -271,7 +290,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     };
   }, []);
 
-  // Acompanha a voz: mantém o trecho lido visível
+  // Trecho novo fora da tela (salto, play, voz ainda carregando): leva o começo dele até a altura de leitura.
+  // Dentro do trecho, quem sobe o texto linha a linha é o destaque da palavra (acima).
   useEffect(() => {
     if (!settings.autoScroll || isDetachedFromVoice) return;
     const container = scrollRef.current;
@@ -279,8 +299,8 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
     if (!container || !target) return;
     const box = container.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
-    if (rect.top < box.top + 90 || rect.bottom > box.bottom - 140) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (rect.top < box.top + 90 || rect.top > box.bottom - 140) {
+      container.scrollBy({ top: rect.top - (box.top + box.height * FOLLOW_LINE_AT), behavior: 'smooth' });
     }
   }, [currentSentenceIndex, settings.autoScroll, isDetachedFromVoice, range.first, range.last]);
 

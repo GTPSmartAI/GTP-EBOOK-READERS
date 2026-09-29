@@ -29,11 +29,15 @@ export async function fetchCloudBooks(): Promise<Book[] | null> {
   return null;
 }
 
-/** Salva o ponto de leitura no servidor */
+/**
+ * Salva o ponto de leitura no servidor. readAt = quando a pessoa chegou nesse ponto (ms):
+ * o servidor só troca o ponto salvo por um mais recente.
+ */
 export async function syncReadingProgressToCloud(
   bookId: string,
   sentenceIndex: number,
-  progressPercentage: number
+  progressPercentage: number,
+  readAt: number
 ): Promise<boolean> {
   try {
     const res = await apiFetch('/api/reading-progress', {
@@ -43,7 +47,9 @@ export async function syncReadingProgressToCloud(
         book_id: bookId,
         last_sentence_index: sentenceIndex,
         progress_percentage: progressPercentage,
+        read_at_ms: readAt,
       }),
+      keepalive: true,
     });
     return res.ok;
   } catch (err) {
@@ -299,6 +305,7 @@ function mapDbToBook(row: any): Book {
     durationMinutes: row.duration_minutes || Math.max(1, Math.ceil((row.total_words || 0) / 140)),
     readingProgress: row.reading_progress || 0,
     lastReadSentenceIndex: row.last_read_sentence_index || 0,
+    progressReadAt: Number(row.progress_read_at_ms) || 0,
     uploadedAt: row.created_at ? new Date(row.created_at).toLocaleDateString('pt-BR') : 'Hoje',
     fileUrl: row.file_url,
     userId: row.user_id || row.userId,

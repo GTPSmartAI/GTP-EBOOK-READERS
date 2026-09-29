@@ -471,12 +471,29 @@ class SpeechEngine {
     this.currentIndex = validIndex;
     this.callbacks.onSentenceChange(validIndex);
 
+    // Pausado e o usuário navegou: continua "pausado" (o player do Android e os fones seguem ligados).
+    // O áudio antigo foi descartado, então o próximo play começa do trecho novo.
     if (wasActive) {
       this.speakCurrentSentence();
-    } else if (this.status === 'paused') {
-      // Pausado e o usuário navegou: o próximo play começa do trecho novo, não retoma o antigo
-      this.setStatus('idle');
     }
+  }
+
+  /**
+   * Muda o ponto de leitura sem tocar e sem avisar como leitura nova
+   * (ponto que veio de outro aparelho). Só com a leitura parada.
+   */
+  public setPosition(index: number) {
+    if (this.status === 'playing' || this.status === 'buffering' || this.sentences.length === 0) return;
+    this.newSession();
+    this.clearSilenceTimer();
+    this.discardCurrentAudio();
+    this.currentIndex = Math.max(0, Math.min(index, this.sentences.length - 1));
+    this.preloadedNextAudio = null;
+    this.prefetchAhead(this.currentIndex, 8);
+  }
+
+  public getBookId(): string {
+    return this.bookId;
   }
 
   /**

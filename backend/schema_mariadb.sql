@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS `reading_progress` (
   `last_sentence_index` INT DEFAULT 0,
   `progress_percentage` INT DEFAULT 0,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `read_at_ms` BIGINT NOT NULL DEFAULT 0,
   UNIQUE KEY `uk_user_book` (`user_id`, `book_id`),
   INDEX `idx_prog_user` (`user_id`),
   INDEX `idx_prog_book` (`book_id`),

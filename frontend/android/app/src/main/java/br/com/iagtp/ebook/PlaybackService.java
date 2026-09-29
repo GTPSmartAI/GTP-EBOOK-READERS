@@ -110,18 +110,32 @@ public class PlaybackService extends Service {
             @Override public boolean onMediaButtonEvent(Intent mediaButtonEvent) {
                 KeyEvent key = mediaButtonEvent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
                 if (key != null) {
+                    boolean press = key.getAction() == KeyEvent.ACTION_DOWN && key.getRepeatCount() == 0;
                     switch (key.getKeyCode()) {
+                        // Play/pausa do fone: quem decide é o site, pelo estado real da leitura
+                        // (o "playing" daqui pode estar atrasado, e o tratamento padrão espera um possível toque duplo)
+                        case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                        case KeyEvent.KEYCODE_HEADSETHOOK:
+                            if (press) send(CMD_TOGGLE, 0);
+                            return true;
+                        case KeyEvent.KEYCODE_MEDIA_PLAY:
+                            if (press) send(CMD_PLAY, 0);
+                            return true;
+                        case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                        case KeyEvent.KEYCODE_MEDIA_STOP:
+                            if (press) send(CMD_PAUSE, 0);
+                            return true;
                         case KeyEvent.KEYCODE_MEDIA_NEXT:
                         case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
                         case KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD:
                         case KeyEvent.KEYCODE_MEDIA_STEP_FORWARD:
-                            if (key.getAction() == KeyEvent.ACTION_DOWN && key.getRepeatCount() == 0) send(CMD_FORWARD, 0);
+                            if (press) send(CMD_FORWARD, 0);
                             return true;
                         case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
                         case KeyEvent.KEYCODE_MEDIA_REWIND:
                         case KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD:
                         case KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD:
-                            if (key.getAction() == KeyEvent.ACTION_DOWN && key.getRepeatCount() == 0) send(CMD_BACK, 0);
+                            if (press) send(CMD_BACK, 0);
                             return true;
                         default:
                             break;
@@ -136,7 +150,15 @@ public class PlaybackService extends Service {
     }
 
     private void send(String command, long pos) {
+        // Pausado com a tela apagada o processador pode dormir antes do site tratar o botão (e baixar o áudio):
+        // segura por até 1 minuto; se a leitura voltar a tocar, o update() passa a segurar sem prazo
+        if (!playing) holdBriefly();
         if (listener != null) listener.onCommand(command, pos);
+    }
+
+    private void holdBriefly() {
+        ensureLocks();
+        if (!wakeLock.isHeld()) wakeLock.acquire(60_000);
     }
 
     @Override
@@ -311,21 +333,26 @@ public class PlaybackService extends Service {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0;
     }
 
+    private void ensureLocks() {
+        if (wakeLock == null) {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ebook:leitura");
+            wakeLock.setReferenceCounted(false);
+        }
+        if (wifiLock == null) {
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null) {
+                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ebook:leitura");
+                wifiLock.setReferenceCounted(false);
+            }
+        }
+    }
+
     private void setLocks(boolean hold) {
         if (hold) {
-            if (wakeLock == null) {
-                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ebook:leitura");
-                wakeLock.setReferenceCounted(false);
-            }
-            if (!wakeLock.isHeld()) wakeLock.acquire();
-            if (wifiLock == null) {
-                WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-                if (wm != null) {
-                    wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ebook:leitura");
-                    wifiLock.setReferenceCounted(false);
-                }
-            }
+            ensureLocks();
+            // Sempre chama: tira o prazo de um holdBriefly() anterior
+            wakeLock.acquire();
             if (wifiLock != null && !wifiLock.isHeld()) wifiLock.acquire();
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
