@@ -38,6 +38,8 @@ piper-tts>=1.3.0
 lameenc>=1.7.0
 # Vozes do plano grátis: Pocket TTS (o Dockerfile instala antes o PyTorch só de CPU, bem menor)
 pocket-tts>=3.3.0
+# Números por extenso para o Pocket ("1990" -> "mil novecentos e noventa")
+num2words>=0.5.13
 
 # Login com Google (confere o ID token)
 google-auth>=2.30.0

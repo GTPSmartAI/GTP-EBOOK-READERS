@@ -706,19 +706,21 @@ def create_app() -> Flask:
     PREMIUM_RETRY_S = 120
     _premium_down_until = [0.0]
 
-    def synthesize_to_cache(text: str, voice_id: str, rate: float, pitch_override, rate_override, cadence):
+    def synthesize_to_cache(text: str, voice_id: str, rate: float, pitch_override, rate_override, cadence,
+                            urgent: bool = False):
         """
-        Sintetiza o trecho (ou reaproveita do cache) e devolve a chave do áudio na RAM.
+        Sintetiza o trecho (ou reaproveita do cache) e devolve (chave do áudio na RAM, voz do plano B ou None).
         A chave depende só do texto e dos parâmetros de voz, então o mesmo trecho pedido
         pelo lote e pelo /synthesize é gerado uma única vez.
+        urgent=True: trecho que o leitor vai tocar agora (passa na frente do pré-carregamento no Pocket).
         """
         key_source = f"{text}|{voice_id}|{rate}|{pitch_override}|{rate_override}|{cadence}"
         audio_key = hashlib.md5(key_source.encode("utf-8")).hexdigest()
         if get_audio_from_ram(audio_key) is not None:
-            return audio_key
+            return audio_key, None
         is_premium = get_voice_metadata(voice_id).get("engine") == "google"
         if is_premium and time.time() < _premium_down_until[0]:
-            return synthesize_to_cache(text, DEFAULT_VOICE_ID, rate, None, None, cadence)
+            return synthesize_to_cache(text, DEFAULT_VOICE_ID, rate, None, None, cadence, urgent)[0], DEFAULT_VOICE_ID
         audio_bytes = generate_speech_bytes(
             text=text,
             voice_id=voice_id,
@@ -726,18 +728,19 @@ def create_app() -> Flask:
             pitch_override=pitch_override,
             rate_override=rate_override,
             cadence=cadence,
+            urgent=urgent,
         )
         if not audio_bytes:
             if voice_id == DEFAULT_VOICE_ID:
-                return None
+                return None, None
             if is_premium:
                 print(f"[TTS] Google falhou na voz {voice_id}; usando {DEFAULT_VOICE_ID} por {PREMIUM_RETRY_S}s")
                 _premium_down_until[0] = time.time() + PREMIUM_RETRY_S
             else:
                 print(f"[TTS] Voz {voice_id} falhou neste trecho; usando {DEFAULT_VOICE_ID}")
-            return synthesize_to_cache(text, DEFAULT_VOICE_ID, rate, None, None, cadence)
+            return synthesize_to_cache(text, DEFAULT_VOICE_ID, rate, None, None, cadence, urgent)[0], DEFAULT_VOICE_ID
         store_audio_in_ram(audio_key, audio_bytes)
-        return audio_key
+        return audio_key, None
 
     def _allowed_voice(voice_id, text, pitch_override, rate_override):
         """Voz premium sem PRO vira a voz grátis padrão (e perde tom/ritmo próprios da voz pedida)."""
@@ -768,6 +771,7 @@ def create_app() -> Flask:
                 "masked_key": _mask(stored or _os.getenv("GOOGLE_TTS_API_KEY")),
                 "last_error": google_tts.last_error,
             },
+            "pocket": pocket_engine.stats(),
         })
 
     @app.route("/api/admin/settings/google-tts", methods=["PUT"])
@@ -844,14 +848,17 @@ def create_app() -> Flask:
                 "audio_url": None
             })
 
-        audio_key = synthesize_to_cache(text, voice_id, rate, pitch_override, rate_override, cadence)
+        # Trecho que o leitor vai tocar agora: passa na frente do pré-carregamento
+        audio_key, fallback = synthesize_to_cache(text, voice_id, rate, pitch_override, rate_override, cadence,
+                                                  urgent=True)
         if not audio_key:
             return jsonify({"error": "Falha na síntese neural"}), 500
 
         return jsonify({
             "success": True,
             "audio_url": f"/api/audio/tts_{audio_key}.mp3",
-            "is_silence": False
+            "is_silence": False,
+            "fallback_voice": fallback,
         })
 
     # 6.2 Pré-carregamento Contínuo em Lote (Buffer de RAM / Suporte a Elenco Multi-Vozes)
@@ -916,7 +923,7 @@ def create_app() -> Flask:
                 }
 
             try:
-                audio_key = synthesize_to_cache(
+                audio_key, fallback = synthesize_to_cache(
                     sentence,
                     task["voice_id"],
                     rate,
@@ -929,7 +936,8 @@ def create_app() -> Flask:
                         "index": idx,
                         "sentence": sentence,
                         "audio_url": f"/api/audio/tts_{audio_key}.mp3",
-                        "is_silence": False
+                        "is_silence": False,
+                        "fallback_voice": fallback,
                     }
             except Exception as e:
                 print(f"[TTS RAM Worker] Erro no item {idx}: {e}")

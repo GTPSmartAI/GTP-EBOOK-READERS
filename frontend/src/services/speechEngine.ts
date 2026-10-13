@@ -306,8 +306,9 @@ class SpeechEngine {
     if (!res.ok || !res.body) return 0;
 
     let received = 0;
-    const applyItem = (item: { index: number; is_silence?: boolean; audio_url?: string | null }) => {
+    const applyItem = (item: { index: number; is_silence?: boolean; audio_url?: string | null; fallback_voice?: string | null }) => {
       if (version !== this.bufferVersion) return;
+      if (item.fallback_voice) this.noticeFallback(this.getVoiceForSentence(item.index));
       if (item.is_silence) {
         this.audioBuffer.set(item.index, 'SILENCE');
       } else if (item.audio_url) {
@@ -548,7 +549,20 @@ class SpeechEngine {
   }
 
   /** Sintetiza um texto avulso e devolve a URL do áudio (ou null). `cancel` interrompe o pedido. */
-  private async synthesize(text: string, voice: VoiceOption, cancel?: AbortSignal, timeoutMs = 15000): Promise<string | null> {
+  /** A voz escolhida falhou no servidor e o trecho veio na voz grátis padrão: avisa uma vez por voz */
+  private fallbackNoticed = new Set<string>();
+  private noticeFallback(voice: VoiceOption) {
+    if (this.fallbackNoticed.has(voice.id)) return;
+    this.fallbackNoticed.add(voice.id);
+    this.callbacks.onNotice?.(
+      voice.engine === 'google'
+        ? `A voz ${voice.name} (Google) está indisponível agora — falta a chave do Google ou ela falhou. Tocando com o Faber.`
+        : `A voz ${voice.name} falhou em alguns trechos no servidor. Esses trechos saíram com o Faber.`
+    );
+  }
+
+  // 30 s: no Pocket o servidor gera um trecho por vez, e o trecho atual pode esperar o que já estava gerando
+  private async synthesize(text: string, voice: VoiceOption, cancel?: AbortSignal, timeoutMs = 30000): Promise<string | null> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const onCancel = () => controller.abort();
@@ -564,6 +578,7 @@ class SpeechEngine {
       if (!response.ok) return null;
       const result = await response.json();
       if (result.is_silence) return 'SILENCE';
+      if (result.fallback_voice) this.noticeFallback(voice);
       return result.success && result.audio_url ? `${BACKEND_URL}${result.audio_url}` : null;
     } catch (err) {
       if (!cancel?.aborted) console.warn('[SpeechEngine] Falha na síntese:', err);
@@ -686,6 +701,11 @@ class SpeechEngine {
       this.setStatus('buffering');
       url = await tail.url;
       if (this.playSessionId !== sessionId || this.currentIndex !== index) return;
+      // O resto não veio (servidor ocupado, tempo esgotado): tenta mais uma vez antes de pular essas palavras
+      if (!url && tail.segment.words.length) {
+        url = await this.synthesize(tail.segment.words.join(' '), this.getVoiceForSentence(index), this.sessionAbort.signal);
+        if (this.playSessionId !== sessionId || this.currentIndex !== index) return;
+      }
     }
     if (!url || url === 'SILENCE') {
       this.advanceAfter(index, sessionId);

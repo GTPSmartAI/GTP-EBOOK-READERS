@@ -138,14 +138,16 @@ def generate_speech_bytes(
     pitch_override: Optional[str] = None,
     rate_override: Optional[str] = None,
     cadence: Optional[str] = None,
+    urgent: bool = False,
 ) -> Optional[bytes]:
-    """Sintetiza o trecho em memória e retorna os bytes do MP3 (None se falhar)."""
+    """Sintetiza o trecho em memória e retorna os bytes do MP3 (None se falhar).
+    urgent=True: o leitor vai tocar este trecho agora (no Pocket, passa na frente do pré-carregamento)."""
     voice_info = get_voice_metadata(voice_id)
     engine = voice_info.get("engine")
     if engine == "piper":
         return _generate_piper(text, voice_info, rate_multiplier)
     if engine == "pocket":
-        return _generate_pocket(text, voice_info)
+        return _generate_pocket(text, voice_info, urgent)
     return _generate_google(text, voice_info, rate_multiplier)
 
 
@@ -159,13 +161,14 @@ def _generate_google(text: str, voice_info: Dict[str, Any], rate_multiplier: flo
                           voice_info.get("lang", "pt-BR"), rate)
 
 
-def _generate_pocket(text: str, voice_info: Dict[str, Any]) -> Optional[bytes]:
+def _generate_pocket(text: str, voice_info: Dict[str, Any], urgent: bool = False) -> Optional[bytes]:
     from pocket_engine import synthesize_mp3, DEFAULT_TEMP
     processed = prepare_text(text)
     if not re.search(r'\w', processed):
         return None
     try:
-        return synthesize_mp3(processed, voice_info["pocket_voice"], float(voice_info.get("pocket_temp", DEFAULT_TEMP)))
+        return synthesize_mp3(processed, voice_info["pocket_voice"],
+                              float(voice_info.get("pocket_temp", DEFAULT_TEMP)), urgent)
     except Exception as e:
         logger.error(f"Falha na voz Pocket {voice_info.get('id')}: {e}")
         return None

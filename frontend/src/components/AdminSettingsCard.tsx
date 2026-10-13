@@ -34,6 +34,18 @@ interface GoogleStatus {
   last_error: { message: string | null; at: string | null };
 }
 
+interface PocketStats {
+  loaded: boolean;
+  unavailable: string | null;
+  samples: number;
+  speed_x_realtime: number | null;
+  avg_gen_s: number | null;
+  avg_wait_urgent_s: number | null;
+  max_wait_urgent_s: number | null;
+  failures_by_voice: Record<string, number>;
+  last_error: string | null;
+}
+
 interface VoiceTest {
   id: string;
   name: string;
@@ -48,6 +60,7 @@ interface VoiceTest {
  */
 export const AdminSettingsCard: React.FC = () => {
   const [status, setStatus] = useState<GoogleStatus | null>(null);
+  const [pocket, setPocket] = useState<PocketStats | null>(null);
   const [key, setKey] = useState('');
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState<'save' | 'remove' | 'test' | null>(null);
@@ -57,7 +70,11 @@ export const AdminSettingsCard: React.FC = () => {
   const load = async () => {
     try {
       const res = await apiFetch('/api/admin/settings');
-      if (res.ok) setStatus((await res.json()).google_tts);
+      if (res.ok) {
+        const data = await res.json();
+        setStatus(data.google_tts);
+        setPocket(data.pocket || null);
+      }
     } catch {
       // sem internet: o cartão fica sem o status
     }
@@ -223,6 +240,38 @@ export const AdminSettingsCard: React.FC = () => {
             </li>
           ))}
         </ul>
+      )}
+
+      {pocket && (
+        <div style={{ fontSize: '12px', color: '#cbd5e1', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ color: '#f59e0b' }}>Vozes Pocket no servidor</strong>
+            <button type="button" onClick={load} style={{ ...buttonStyle, padding: '4px 10px', fontSize: '11px' }}>Atualizar</button>
+          </div>
+          {pocket.unavailable ? (
+            <span style={{ color: '#f87171' }}>Indisponível: {pocket.unavailable}</span>
+          ) : pocket.samples === 0 ? (
+            <span style={{ color: '#64748b' }}>{pocket.loaded ? 'Modelo carregado. ' : 'Modelo carregando. '}Nenhum trecho gerado desde o último deploy.</span>
+          ) : (
+            <>
+              <span>
+                Velocidade: <strong style={{ color: (pocket.speed_x_realtime ?? 0) >= 1.3 ? '#10b981' : '#f87171' }}>
+                  {pocket.speed_x_realtime}x o tempo real
+                </strong>{' '}
+                (abaixo de ~1,3x a leitura engasga) · {pocket.avg_gen_s}s por trecho · últimos {pocket.samples} trechos
+              </span>
+              {pocket.avg_wait_urgent_s !== null && (
+                <span>Espera do trecho atual na fila: média {pocket.avg_wait_urgent_s}s, máxima {pocket.max_wait_urgent_s}s</span>
+              )}
+              {Object.keys(pocket.failures_by_voice).length > 0 && (
+                <span style={{ color: '#f87171' }}>
+                  Falhas: {Object.entries(pocket.failures_by_voice).map(([v, n]) => `${v} (${n})`).join(', ')}
+                  {pocket.last_error ? ` — ${pocket.last_error}` : ''}
+                </span>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       <details style={{ fontSize: '12px', color: '#94a3b8' }}>

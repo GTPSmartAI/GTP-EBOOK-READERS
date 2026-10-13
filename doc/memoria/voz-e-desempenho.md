@@ -77,7 +77,13 @@ Um motor de voz rodando no processador da VPS aguentou só ~1,1x com uma pessoa 
 - Um modelo só, em português (`language="portuguese"`, versão sem clonagem, pública). Cada voz escolhe um timbre pronto (`pocket_voice`) e a temperatura (`pocket_temp`, padrão 0.3; 0.6 = entonação mais variada, medida +30% de variação de tom).
 - O modelo em português aceita 27 timbres (os de outros idiomas falam português com o modelo pt). Os escolhidos foram medidos pelo tom médio (F0): Estela 245 Hz, Alice 218, Luna 183 (mais expressiva), Vera 169, Helena 147 (feminina grave); Rafael 143, Davi 141, Bruno 118, Marcos 87 (o mais grave). Charles, Daan e Javert deram medida instável e ficaram de fora.
 - Velocidade: ~2x o tempo real num i3 de 2 núcleos (~3 s por trecho). A versão `portuguese_24l` soa melhor, mas é 0,6x: lenta demais para ler ao vivo.
-- Não é seguro para várias threads: a geração roda sob uma trava (um trecho por vez).
+- Não é seguro para várias threads: gera um trecho por vez, numa **fila com prioridade**. O trecho que o leitor vai tocar agora (`/api/tts/synthesize`, `urgent=True`) passa na frente do pré-carregamento; o pré-carregamento sai em ordem de chegada.
+- **Problemas já resolvidos (13/10/2026, depois do 1º deploy):**
+  - *Vozes "sussurradas":* o Pocket saía ~7 dB mais baixo que o Faber. Cada trecho agora é normalizado (RMS -15 dBFS, pico -1 dBFS). Medido: o bitrate do MP3 (48 x 96 kbps) não era a causa.
+  - *Palavras puladas:* sem prioridade, o pedido do trecho atual esperava os lotes adiantados, passava dos 15 s do app e o resto da frase era pulado. Agora: fila com prioridade, app espera até 30 s e tenta de novo o resto da frase antes de pular.
+  - *Números:* viram palavras antes de ir ao modelo (`expand_numbers`, biblioteca `num2words`), porque o modelo pula dígitos.
+- **Desempenho no servidor:** Configurações > Administração mostra a velocidade do Pocket (x tempo real), a espera do trecho atual na fila e as falhas por voz (`pocket_engine.stats()`, desde o último deploy). Abaixo de ~1,3x a leitura engasga.
+- Quando a voz escolhida cai no plano B, a resposta da síntese traz `fallback_voice` e o app avisa uma vez por voz.
 - No container: PyTorch só de CPU e modelo + timbres baixados no build (`HF_HOME=/app/models/hf`, Dockerfile).
 - **No Windows:** precisa de `PYTHONUTF8=1` (a biblioteca abre um YAML sem informar UTF-8; já está no `iniciar_dev.ps1`). O Controle de Aplicativo do Windows bloqueia DLLs novas que ainda não têm reputação: instalar com `torch==2.14.1`, `pydantic==2.13.5` e `pydantic-core==2.46.5`, que já carregam.
 - Amostras para ouvir: `apk\amostras-voz\pocket-vozes\` (fora do Git), uma por timbre, e `rafael-temp*.mp3` com as temperaturas.
