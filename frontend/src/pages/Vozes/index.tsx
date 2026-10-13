@@ -20,6 +20,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import type { VoiceOption } from '../../types';
+import { ENGINE_BADGE } from '../../data/voices';
 
 interface VozesProps {
   voices: VoiceOption[];
@@ -484,6 +485,18 @@ export const Vozes: React.FC<VozesProps> = ({
                                 border: voice.tier === 'premium' ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid rgba(148, 163, 184, 0.25)',
                               }}>
                                 {voice.tier === 'premium' ? (isProUser ? '★ PRO' : '🔒 PRO') : 'GRÁTIS'}
+                              </span>
+                            )}
+                            {!isCloned && voice.engine && ENGINE_BADGE[voice.engine] && (
+                              <span style={{
+                                fontSize: '9px',
+                                fontWeight: 800,
+                                padding: '2px 6px',
+                                borderRadius: '6px',
+                                color: ENGINE_BADGE[voice.engine].color,
+                                border: `1px solid ${ENGINE_BADGE[voice.engine].color}55`,
+                              }}>
+                                {ENGINE_BADGE[voice.engine].label}
                               </span>
                             )}
                           </div>

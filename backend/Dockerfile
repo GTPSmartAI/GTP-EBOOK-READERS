@@ -22,8 +22,20 @@ RUN mkdir -p $PIPER_MODELS_DIR && cd $PIPER_MODELS_DIR && \
       done; \
     done && ls -la
 
+# PyTorch só de CPU (o padrão do PyPI no Linux traz CUDA, vários GB a mais). Antes do requirements,
+# para o pocket-tts encontrar o torch já instalado.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt gunicorn==23.0.0
+
+# Vozes Pocket (grátis): modelo em português e os timbres do catálogo, baixados no build.
+# Refeito só quando o catálogo de vozes muda.
+ENV HF_HOME=/app/models/hf
+COPY components/SinteseVoz/voice_catalog.json /tmp/voice_catalog.json
+RUN python -c "import json; from pocket_tts import TTSModel; \
+voices = sorted({v['pocket_voice'] for v in json.load(open('/tmp/voice_catalog.json'))['voices'] if v.get('engine') == 'pocket'}); \
+m = TTSModel.load_model(language='portuguese'); [m.get_state_for_audio_prompt(v) for v in voices]; print('Pocket ok:', voices)"
 
 COPY . .
 

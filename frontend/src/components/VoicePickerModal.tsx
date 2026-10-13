@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Play, Check, Heart, Plus, Volume2, Sparkles } from 'lucide-react';
 import type { VoiceOption } from '../types';
-import { VOICES } from '../data/voices';
+import { VOICES, ENGINE_BADGE } from '../data/voices';
 import { speechEngine } from '../services/speechEngine';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 
@@ -383,6 +383,18 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                               GRÁTIS
                             </span>
                           )}
+                          {voice.engine && ENGINE_BADGE[voice.engine] && (
+                            <span style={{
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              color: ENGINE_BADGE[voice.engine].color,
+                              border: `1px solid ${ENGINE_BADGE[voice.engine].color}55`,
+                            }}>
+                              {ENGINE_BADGE[voice.engine].label}
+                            </span>
+                          )}
                         </div>
                         <span style={{
                           fontSize: '11px',
@@ -392,7 +404,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                           textOverflow: 'ellipsis',
                           marginTop: '1px',
                         }}>
-                          {voice.tag || voice.accent}
+                          {voice.tag}{voice.accent ? ` · ${voice.accent.split('·').pop()?.trim()}` : ''}{voice.gender === 'female' ? ' · Feminina' : ' · Masculina'}
                         </span>
                       </div>
                     </div>

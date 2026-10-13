@@ -9,10 +9,17 @@ const CLONED_VOICES_KEY = 'gtp_cloned_voices';
 // Voz padrão: a principal do plano grátis (Piper, rodando no nosso servidor)
 export const DEFAULT_VOICE_ID = 'faber';
 
-/** Voz liberada no plano grátis. Vozes premium (Edge) e personalizadas são do PRO; o backend confere de novo. */
+/** Voz liberada no plano grátis. Vozes premium (Google) e personalizadas são do PRO; o backend confere de novo. */
 export function isFreeVoice(voice: VoiceOption | undefined | null): boolean {
-  return Boolean(voice) && voice!.engine === 'piper' && voice!.tier !== 'premium' && !voice!.isCloned;
+  return Boolean(voice) && (voice!.engine === 'piper' || voice!.engine === 'pocket') && voice!.tier !== 'premium' && !voice!.isCloned;
 }
+
+/** Motor de cada voz, para o selo na lista (deixa claro de onde vem cada voz) */
+export const ENGINE_BADGE: Record<string, { label: string; color: string }> = {
+  piper: { label: 'PIPER', color: '#38bdf8' },
+  pocket: { label: 'POCKET', color: '#f59e0b' },
+  google: { label: 'GOOGLE', color: '#60a5fa' },
+};
 
 export const LANGUAGE_LABELS: Record<string, string> = {
   'pt-BR': 'Português (Brasil)',
@@ -36,9 +43,9 @@ export const VOICES: VoiceOption[] = catalog.voices.map((v) => ({
   cadence: v.cadence as VoiceOption['cadence'],
   tier: v.tier as VoiceOption['tier'],
   engine: v.engine as VoiceOption['engine'],
-  // Tom e velocidade de cada variação (só vozes Edge; as Piper ajustam o ritmo no servidor)
-  pitch: 'pitch' in v ? (v.pitch as string) : undefined,
-  rate: 'rate' in v ? (v.rate as string) : undefined,
+  // Tom e ritmo de cada voz são aplicados no servidor (catálogo)
+  pitch: undefined,
+  rate: undefined,
   stability: 0.95,
   clarity: 0.97,
   speed: 'speed' in v ? Number(v.speed) : 1.0,
@@ -68,7 +75,9 @@ export function getAllVoices(): VoiceOption[] {
 /** Procura a voz no catálogo (aceita IDs antigos) e entre as clonadas */
 export function findVoiceById(id: string | undefined | null): VoiceOption | undefined {
   if (!id) return undefined;
-  const resolved = LEGACY_IDS[id] || id;
+  // ID antigo pode apontar para outro ID antigo: segue a corrente
+  let resolved = id;
+  for (let i = 0; i < 3 && LEGACY_IDS[resolved]; i++) resolved = LEGACY_IDS[resolved];
   return VOICES.find((v) => v.id === resolved) || getClonedVoices().find((v) => v.id === resolved);
 }
 

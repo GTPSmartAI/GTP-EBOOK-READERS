@@ -1,6 +1,6 @@
 # Voz e desempenho da leitura
 
-Última atualização: 27/09/2026
+Última atualização: 13/10/2026 (seção "Motores de voz desde 13/10/2026" vale sobre o que estiver diferente abaixo)
 
 ## Como o áudio é gerado
 
@@ -58,6 +58,42 @@ Um motor de voz rodando no processador da VPS aguentou só ~1,1x com uma pessoa 
   - "prontos adiante: 0" e "gerado na hora": a geração não acompanha a leitura. Buffer não resolve.
   - "parado esperando" baixo e silêncio embutido alto: o problema é o intervalo entre MP3s.
 - O silêncio embutido medido nos MP3 é pequeno (~100–160 ms por troca em 2x) e não é a causa dos engasgos.
+
+## Motores de voz desde 13/10/2026
+
+| Motor | Plano | Vozes | Arquivo |
+|---|---|---|---|
+| **Piper** | grátis | Faber (padrão), Cadu, Jeff | `piper_engine.py` |
+| **Pocket TTS** (Kyutai, aberto) | grátis | Rafael, Rafael Expressivo, Davi, Bruno, Marcos; Estela, Alice, Luna, Vera, Helena | `pocket_engine.py` |
+| **Google Cloud TTS** (API oficial) | PRO | Kore, Aoede, Leda, Charon, Orus, Puck (Chirp 3 HD) | `google_tts.py` |
+
+- O selo POCKET / PIPER / GOOGLE aparece em cada voz na lista (`ENGINE_BADGE` em `frontend/src/data/voices.ts`), e o campo `accent` do catálogo começa com o motor.
+- **Edge removido.** Desde ~13/10/2026 a Microsoft responde **403** a todo pedido do Edge TTS (edge-tts 7.2.8). Trocar a versão informada não resolve; não tentar driblar. Os IDs antigos (Francisca, Thalita) apontam para vozes Google em `legacy_ids` (o código segue a corrente de IDs antigos).
+- **Sintoma de motor fora do ar:** a leitura não toca ou pula trechos, porque o `speechEngine` tenta de novo e depois avança (`handlePlaybackFailure`).
+- **Plano B (api_server.py, `synthesize_to_cache`):** se a voz pedida falha, o trecho sai no Faber. Falha do Google deixa o Google sem ser tentado por 120 s (`PREMIUM_RETRY_S`). O áudio do plano B fica no cache com a chave do Faber.
+
+### Pocket TTS
+
+- Um modelo só, em português (`language="portuguese"`, versão sem clonagem, pública). Cada voz escolhe um timbre pronto (`pocket_voice`) e a temperatura (`pocket_temp`, padrão 0.3; 0.6 = entonação mais variada, medida +30% de variação de tom).
+- O modelo em português aceita 27 timbres (os de outros idiomas falam português com o modelo pt). Os escolhidos foram medidos pelo tom médio (F0): Estela 245 Hz, Alice 218, Luna 183 (mais expressiva), Vera 169, Helena 147 (feminina grave); Rafael 143, Davi 141, Bruno 118, Marcos 87 (o mais grave). Charles, Daan e Javert deram medida instável e ficaram de fora.
+- Velocidade: ~2x o tempo real num i3 de 2 núcleos (~3 s por trecho). A versão `portuguese_24l` soa melhor, mas é 0,6x: lenta demais para ler ao vivo.
+- Não é seguro para várias threads: a geração roda sob uma trava (um trecho por vez).
+- No container: PyTorch só de CPU e modelo + timbres baixados no build (`HF_HOME=/app/models/hf`, Dockerfile).
+- **No Windows:** precisa de `PYTHONUTF8=1` (a biblioteca abre um YAML sem informar UTF-8; já está no `iniciar_dev.ps1`). O Controle de Aplicativo do Windows bloqueia DLLs novas que ainda não têm reputação: instalar com `torch==2.14.1`, `pydantic==2.13.5` e `pydantic-core==2.46.5`, que já carregam.
+- Amostras para ouvir: `apk\amostras-voz\pocket-vozes\` (fora do Git), uma por timbre, e `rafael-temp*.mp3` com as temperaturas.
+- Qwen3-TTS foi testado e descartado: nenhuma voz pronta brasileira e lento demais sem placa de vídeo.
+
+### Google Cloud (PRO)
+
+- API REST `texttospeech.googleapis.com/v1/text:synthesize` com **chave de API**. Sem biblioteca do Google: usa `requests`.
+- A chave fica no banco (`app_settings.google_tts_api_key`) e é cadastrada em **Configurações > Administração** (só e-mails em `ADMIN_EMAILS` no `.env`; para os outros as rotas `/api/admin/*` respondem 404). Antes de salvar, o backend confere a chave listando as vozes pt-BR. Sem chave no banco, vale `GOOGLE_TTS_API_KEY` do `.env`.
+- "Testar vozes" gera uma frase em cada voz Google do catálogo e mostra quais a conta aceita. Se o Google não tiver alguma voz Chirp 3 HD em pt-BR, trocar o `google_voice` dela no catálogo (ex.: `pt-BR-Neural2-A`).
+- Trocar de conta Google: colar a chave nova no mesmo campo.
+
+### Como voltar atrás
+
+- Tirar as vozes Pocket: apagar as entradas `"engine": "pocket"` do `voice_catalog.json` (e, se quiser, a linha `pocket-tts` do requirements e o bloco Pocket do Dockerfile). Quem tiver uma voz Pocket salva volta para o Faber.
+- Teste rápido das vozes, sem subir o servidor: chamar `neural_tts.generate_speech_bytes(texto, voice_id)` para cada id de `VOICE_MAPPING` (com `PYTHONUTF8=1`).
 
 ## Problemas já resolvidos (não repetir)
 

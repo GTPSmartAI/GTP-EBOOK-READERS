@@ -892,7 +892,7 @@ const ReaderApp: React.FC<{ user: SessionUser }> = ({ user }) => {
   const handleSelectVoice = (voice: VoiceOption) => {
     // Vozes PRO (e vozes personalizadas) pedem assinatura; a amostra continua tocando para ouvir antes
     if (!isProUser && !isFreeVoice(voice)) {
-      showNotice(`A voz ${voice.name} é do plano PRO. No plano grátis você tem Faber, Cadu e Jeff.`);
+      showNotice(`A voz ${voice.name} é do plano PRO. No plano grátis você tem as vozes Piper e Pocket.`);
       setIsSubscriptionOpen(true);
       return;
     }

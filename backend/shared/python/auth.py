@@ -184,12 +184,20 @@ PUBLIC_USER_FIELDS = ("id", "email", "username", "full_name", "subscription_tier
                       "words_read_total", "created_at")
 
 
+def is_admin_email(email: Optional[str]) -> bool:
+    """Administrador = e-mail listado em ADMIN_EMAILS no .env (separados por vírgula)."""
+    import os
+    admins = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+    return bool(email) and email.strip().lower() in admins
+
+
 def public_user(user: Dict[str, Any]) -> Dict[str, Any]:
     """Dados do usuário que podem ir para o app (nunca o hash da senha)."""
     out = {k: user.get(k) for k in PUBLIC_USER_FIELDS}
     # Só se existe senha / conta Google ligada (para a tela de conta), nunca os valores
     out["has_password"] = bool(user.get("password_hash"))
     out["has_google"] = bool(user.get("google_sub"))
+    out["is_admin"] = is_admin_email(user.get("email"))
     if out.get("created_at") is not None:
         out["created_at"] = str(out["created_at"])
     return out
@@ -243,6 +251,20 @@ def require_auth(view):
         user = user_from_token(bearer_token() or "")
         if not user:
             return jsonify({"error": "Sessão expirada. Entre novamente.", "code": "auth_required"}), 401
+        g.user = user
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def require_admin(view):
+    """Rota só para administrador (ADMIN_EMAILS). Responde 404 aos outros, para nem revelar que existe."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        user = user_from_token(bearer_token() or "")
+        if not user:
+            return jsonify({"error": "Sessão expirada. Entre novamente.", "code": "auth_required"}), 401
+        if not user.get("is_admin"):
+            return jsonify({"error": "Não encontrado"}), 404
         g.user = user
         return view(*args, **kwargs)
     return wrapper

@@ -56,8 +56,8 @@ export interface VoiceOption {
   pitch?: string;
   rate?: string;
   sampleAudioUrl?: string;
-  tier?: 'premium' | 'basic'; // basic = plano grátis (Piper); premium = só PRO (Edge TTS)
-  engine?: 'edge' | 'piper';
+  tier?: 'premium' | 'basic'; // basic = plano grátis (Piper/Pocket); premium = só PRO (Google Cloud)
+  engine?: 'piper' | 'pocket' | 'google';
   isCloned?: boolean;
   userId?: string;
   createdAt?: number;

@@ -30,11 +30,10 @@ Coisas que faltam antes de o app cobrar e crescer. Quase todas dependem de **cri
 - Publicar a tela de consentimento OAuth em **produção**. Em modo teste só os e-mails cadastrados como testadores conseguem entrar. A publicação pede o link da política de privacidade (item 3).
 - Quando houver APK assinado com a chave de release ou da Play Store, cadastrar o SHA-1 dessa chave num client ID Android (veja [contas-e-seguranca.md](contas-e-seguranca.md)).
 
-## 6. Conta Azure (vozes PRO)
+## 6. Vozes PRO no Google Cloud (feito em 13/10/2026)
 
-- As vozes PRO usam o Edge TTS, que é um uso **não oficial** do serviço da Microsoft: pode parar a qualquer hora, e cobrar por ele é arriscado.
-- Migrar para o **Azure Speech** oficial (mesmas vozes neurais pt-BR). Tem cota grátis mensal de caracteres neurais; depois cobra por caractere, o que permite calcular o custo por assinante.
-- **Precisa:** conta Azure, recurso "Speech" criado, chave e região no `.env`.
+- O Edge parou (403 da Microsoft) e foi trocado pelo **Google Cloud Text-to-Speech** oficial. Falta só cadastrar a chave de API em Configurações > Administração (veja [voz-e-desempenho.md](voz-e-desempenho.md)).
+- Custo depois da cota grátis: Chirp 3 HD ~US$ 30 por milhão de caracteres (1 h de leitura ≈ 55 mil caracteres). A conta de teste tem crédito grátis.
 
 ## 7. Anúncios (ideia avaliada em 27/09/2026)
 

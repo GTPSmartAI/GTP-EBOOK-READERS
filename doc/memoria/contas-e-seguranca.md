@@ -21,6 +21,12 @@
 - APK: o Google bloqueia o login dentro de WebView, então o app usa o login nativo do Android (plugin `@capgo/capacitor-social-login`, Credential Manager). Precisa de um client ID **Android** no mesmo projeto do Google Cloud, com o pacote `br.com.iagtp.ebook` e o SHA-1 da chave que assina o APK. A chave de debug deste computador tem SHA-1 `EB:18:D2:C3:F0:6B:EF:76:35:8F:6A:D9:77:AA:7E:1F:D8:45:59:F5`. Um APK assinado com outra chave (release, Play Store) precisa do SHA-1 dela cadastrado também.
 - Código: `frontend/src/services/googleAuth.ts` e o componente `GoogleSignIn` em `frontend/src/pages/Login/index.tsx`.
 
+## Administrador
+
+- Quem tem o e-mail em `ADMIN_EMAILS` no `backend/.env` (vários: separados por vírgula) é administrador: o usuário vem com `is_admin: true` e vê **Configurações > Administração** (chave do Google Cloud das vozes PRO).
+- Rotas `/api/admin/*` usam `@require_admin` (`auth.py`) e respondem **404** para quem não é administrador.
+- O deploy leva o `.env` para a produção (`--env-add`), então mudar o e-mail exige rodar o deploy de novo.
+
 ## Regras de acesso (backend)
 
 - O servidor **nunca** usa `user_id` mandado pelo app: o usuário vem do token (`g.user`).

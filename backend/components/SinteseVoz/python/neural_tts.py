@@ -1,17 +1,19 @@
 """
 Motor de Síntese de Voz
 Catálogo único em ../voice_catalog.json (também lido pelo frontend).
-- Plano grátis (tier "basic"): vozes Piper, modelos abertos rodando no nosso servidor (piper_engine.py).
-- PRO (tier "premium"): vozes do Microsoft Edge TTS.
+- Plano grátis (tier "basic"): modelos abertos rodando no nosso servidor
+  - Piper (piper_engine.py): Faber, Cadu, Jeff
+  - Pocket TTS (pocket_engine.py): vozes femininas e masculinas, do agudo ao grave
+- PRO (tier "premium"): Google Cloud Text-to-Speech (google_tts.py, API oficial; chave em Configurações > Administração).
 Quem decide o que cada usuário pode usar é voice_for_plan(); a rota de síntese chama antes de gerar.
 """
 
-import asyncio
 import re
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-import edge_tts
+
+FREE_ENGINES = ("piper", "pocket")
 
 logger = __import__("logging").getLogger("NeuralTTS")
 
@@ -50,8 +52,8 @@ def voice_for_plan(voice_id: str, subscription_tier: Optional[str], text: str = 
     a única exceção é a frase de amostra da própria voz (para ouvir antes de assinar).
     """
     info = get_voice_metadata(voice_id)
-    # Só as vozes Piper do catálogo são grátis (vozes personalizadas também são PRO)
-    is_free = info.get("engine") == "piper" and info.get("tier") != "premium"
+    # Só as vozes Piper/Pocket do catálogo são grátis (vozes personalizadas também são PRO)
+    is_free = info.get("engine") in FREE_ENGINES and info.get("tier") != "premium"
     if is_free or (subscription_tier or "free") in PRO_TIERS:
         return info.get("id", voice_id)
     if text and text.strip() == str(info.get("samplePhrase", "")).strip():
@@ -111,59 +113,21 @@ def save_custom_voice_entry(voice_id: str, voice_data: Dict[str, Any]):
 
 def get_voice_metadata(voice_id: str) -> Dict[str, Any]:
     """Retorna a voz do catálogo (aceita IDs antigos) ou a voz personalizada salva."""
-    voice_id = LEGACY_VOICE_IDS.get(voice_id, voice_id)
+    # IDs antigos podem apontar para outro ID antigo: segue a corrente
+    for _ in range(3):
+        voice_id = LEGACY_VOICE_IDS.get(voice_id, voice_id)
     if voice_id in VOICE_MAPPING:
         return VOICE_MAPPING[voice_id]
 
     custom = load_custom_voices().get(voice_id)
     if custom:
-        return {**custom, "engine": "edge"}
+        # Vozes personalizadas eram variações do Edge (removido): passam a usar a voz PRO padrão do Google
+        return {**custom, "engine": "google", "google_voice": custom.get("google_voice") or DEFAULT_GOOGLE_VOICE}
 
     return VOICE_MAPPING[DEFAULT_VOICE_ID]
 
 
-async def _synthesize_edge_tts_bytes(text: str, voice_name: str, rate: str = "+0%", pitch: str = "+0Hz") -> Optional[bytes]:
-    """Sintetiza áudio 100% em memória RAM utilizando edge_tts.stream()"""
-    try:
-        communicate = edge_tts.Communicate(text, voice_name, rate=rate, pitch=pitch)
-        out = bytearray()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                out.extend(chunk["data"])
-        return bytes(out) if len(out) > 0 else None
-    except Exception as e:
-        logger.error(f"Erro no edge-tts stream para a voz {voice_name}: {e}")
-        return None
-
-
-def _edge_rate(base: str, rate_multiplier: float) -> str:
-    try:
-        base_val = int(str(base).replace("%", "").replace("+", ""))
-    except ValueError:
-        base_val = 0
-    total = max(-50, min(100, base_val + int((rate_multiplier - 1.0) * 100)))
-    return f"{'+' if total >= 0 else ''}{total}%"
-
-
-def _generate_edge(text: str, voice_info: Dict[str, Any], rate_multiplier: float,
-                   pitch_override: Optional[str], rate_override: Optional[str], cadence: Optional[str]) -> Optional[bytes]:
-    processed = format_narration_text(text, cadence=cadence or voice_info.get("cadence", "natural"))
-    if not re.search(r'\w', processed):
-        return None
-    rate_str = rate_override or _edge_rate(voice_info.get("rate", "+0%"), rate_multiplier)
-    pitch_str = pitch_override or voice_info.get("pitch", "+0Hz")
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(_synthesize_edge_tts_bytes(
-                processed, voice_info.get("edge_voice", "pt-BR-AntonioNeural"), rate_str, pitch_str
-            ))
-        finally:
-            loop.close()
-    except Exception as e:
-        logger.error(f"Falha ao gerar síntese Edge: {e}")
-        return None
+DEFAULT_GOOGLE_VOICE = "pt-BR-Chirp3-HD-Kore"
 
 
 def generate_speech_bytes(
@@ -175,11 +139,36 @@ def generate_speech_bytes(
     rate_override: Optional[str] = None,
     cadence: Optional[str] = None,
 ) -> Optional[bytes]:
-    """Sintetiza o trecho em memória e retorna os bytes do MP3."""
+    """Sintetiza o trecho em memória e retorna os bytes do MP3 (None se falhar)."""
     voice_info = get_voice_metadata(voice_id)
-    if voice_info.get("engine") == "piper":
+    engine = voice_info.get("engine")
+    if engine == "piper":
         return _generate_piper(text, voice_info, rate_multiplier)
-    return _generate_edge(text, voice_info, rate_multiplier, pitch_override, rate_override, cadence)
+    if engine == "pocket":
+        return _generate_pocket(text, voice_info)
+    return _generate_google(text, voice_info, rate_multiplier)
+
+
+def _generate_google(text: str, voice_info: Dict[str, Any], rate_multiplier: float) -> Optional[bytes]:
+    from google_tts import synthesize_mp3
+    processed = prepare_text(text)
+    if not re.search(r'\w', processed):
+        return None
+    rate = float(voice_info.get("google_rate", 1.0)) * (rate_multiplier or 1.0)
+    return synthesize_mp3(processed, voice_info.get("google_voice", DEFAULT_GOOGLE_VOICE),
+                          voice_info.get("lang", "pt-BR"), rate)
+
+
+def _generate_pocket(text: str, voice_info: Dict[str, Any]) -> Optional[bytes]:
+    from pocket_engine import synthesize_mp3, DEFAULT_TEMP
+    processed = prepare_text(text)
+    if not re.search(r'\w', processed):
+        return None
+    try:
+        return synthesize_mp3(processed, voice_info["pocket_voice"], float(voice_info.get("pocket_temp", DEFAULT_TEMP)))
+    except Exception as e:
+        logger.error(f"Falha na voz Pocket {voice_info.get('id')}: {e}")
+        return None
 
 
 def _generate_piper(text: str, voice_info: Dict[str, Any], rate_multiplier: float) -> Optional[bytes]:
@@ -197,6 +186,10 @@ def _generate_piper(text: str, voice_info: Dict[str, Any], rate_multiplier: floa
 
 def piper_models() -> List[str]:
     return [v["piper_model"] for v in VOICE_MAPPING.values() if v.get("engine") == "piper"]
+
+
+def pocket_voices() -> List[str]:
+    return sorted({v["pocket_voice"] for v in VOICE_MAPPING.values() if v.get("engine") == "pocket"})
 
 
 _PUBLIC_FIELDS = ("id", "name", "gender", "lang", "accent", "tag", "category", "description",

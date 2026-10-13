@@ -16,6 +16,8 @@ export interface SessionUser {
   created_at?: string;
   has_password?: boolean;
   has_google?: boolean;
+  /** Administrador do sistema (ADMIN_EMAILS no backend): vê Configurações > Administração */
+  is_admin?: boolean;
 }
 
 const TOKEN_KEY = 'gtp_session_token';

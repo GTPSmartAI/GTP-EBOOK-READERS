@@ -661,8 +661,16 @@ def create_app() -> Flask:
         return jsonify(build_stats(g.user["id"], period, offset, get_reading_stats_rows, get_reading_totals))
 
     # ------------------------------------------------------------------ 6. Voz
-    from neural_tts import generate_speech_bytes, get_extended_voice_catalog, voice_for_plan, piper_models, DEFAULT_VOICE_ID
+    from neural_tts import (generate_speech_bytes, get_extended_voice_catalog, get_voice_metadata, voice_for_plan,
+                            piper_models, pocket_voices, DEFAULT_VOICE_ID)
     from piper_engine import warm_up
+    import pocket_engine
+    import google_tts
+    from auth import require_admin
+    from database import get_app_setting, set_app_setting
+
+    # Chave do Google Cloud (vozes PRO): cadastrada pelo administrador, guardada no banco
+    google_tts.set_key_provider(lambda: get_app_setting(google_tts.SETTING_KEY))
     from voice_cloner import register_cloned_voice
     from collections import OrderedDict
     import threading
@@ -691,6 +699,13 @@ def create_app() -> Flask:
                 return _AUDIO_RAM_CACHE[key]
             return None
 
+    # Plano B: se a voz pedida falhar (Google sem chave, chave inválida, cota; Pocket com erro), o trecho sai
+    # na voz grátis padrão, em vez de o leitor ficar mudo ou pular o trecho. Depois de uma falha do Google,
+    # ele só é tentado de novo após PREMIUM_RETRY_S (para cada trecho não esperar a falha).
+    import time
+    PREMIUM_RETRY_S = 120
+    _premium_down_until = [0.0]
+
     def synthesize_to_cache(text: str, voice_id: str, rate: float, pitch_override, rate_override, cadence):
         """
         Sintetiza o trecho (ou reaproveita do cache) e devolve a chave do áudio na RAM.
@@ -701,6 +716,9 @@ def create_app() -> Flask:
         audio_key = hashlib.md5(key_source.encode("utf-8")).hexdigest()
         if get_audio_from_ram(audio_key) is not None:
             return audio_key
+        is_premium = get_voice_metadata(voice_id).get("engine") == "google"
+        if is_premium and time.time() < _premium_down_until[0]:
+            return synthesize_to_cache(text, DEFAULT_VOICE_ID, rate, None, None, cadence)
         audio_bytes = generate_speech_bytes(
             text=text,
             voice_id=voice_id,
@@ -710,7 +728,14 @@ def create_app() -> Flask:
             cadence=cadence,
         )
         if not audio_bytes:
-            return None
+            if voice_id == DEFAULT_VOICE_ID:
+                return None
+            if is_premium:
+                print(f"[TTS] Google falhou na voz {voice_id}; usando {DEFAULT_VOICE_ID} por {PREMIUM_RETRY_S}s")
+                _premium_down_until[0] = time.time() + PREMIUM_RETRY_S
+            else:
+                print(f"[TTS] Voz {voice_id} falhou neste trecho; usando {DEFAULT_VOICE_ID}")
+            return synthesize_to_cache(text, DEFAULT_VOICE_ID, rate, None, None, cadence)
         store_audio_in_ram(audio_key, audio_bytes)
         return audio_key
 
@@ -721,8 +746,72 @@ def create_app() -> Flask:
             return allowed, None, None
         return voice_id, pitch_override, rate_override
 
-    # Vozes Piper: carrega os modelos em segundo plano para o primeiro trecho não esperar
-    threading.Thread(target=lambda: warm_up(piper_models()), daemon=True).start()
+    # Vozes Piper e Pocket: carrega os modelos em segundo plano para o primeiro trecho não esperar
+    def _warm_up_free_voices():
+        warm_up(piper_models())
+        pocket_engine.warm_up(pocket_voices())
+    threading.Thread(target=_warm_up_free_voices, daemon=True).start()
+
+    # 6.0 Administração: chave do Google Cloud das vozes PRO (só ADMIN_EMAILS)
+    def _mask(key):
+        return f"{key[:6]}…{key[-4:]}" if key and len(key) > 12 else ("configurada" if key else None)
+
+    @app.route("/api/admin/settings", methods=["GET"])
+    @require_admin
+    def admin_get_settings():
+        stored = get_app_setting(google_tts.SETTING_KEY)
+        import os as _os
+        return jsonify({
+            "google_tts": {
+                "configured": bool(stored or _os.getenv("GOOGLE_TTS_API_KEY")),
+                "source": "app" if stored else ("env" if _os.getenv("GOOGLE_TTS_API_KEY") else None),
+                "masked_key": _mask(stored or _os.getenv("GOOGLE_TTS_API_KEY")),
+                "last_error": google_tts.last_error,
+            },
+        })
+
+    @app.route("/api/admin/settings/google-tts", methods=["PUT"])
+    @require_admin
+    def admin_set_google_key():
+        """Salva a chave depois de conferir no Google. Chave vazia apaga (volta para a do .env, se houver)."""
+        key = str((request.get_json(silent=True) or {}).get("api_key", "")).strip()
+        if key:
+            try:
+                voices = google_tts.list_voices(key)
+            except Exception as e:
+                return jsonify({"error": f"O Google recusou a chave: {e}"}), 400
+            set_app_setting(google_tts.SETTING_KEY, key, g.user["email"])
+        else:
+            voices = []
+            set_app_setting(google_tts.SETTING_KEY, None, g.user["email"])
+        google_tts.clear_key_cache()
+        _premium_down_until[0] = 0.0
+        google_tts.last_error.update(message=None, at=None)
+        return jsonify({"success": True, "voices_found": len(voices)})
+
+    @app.route("/api/admin/settings/google-tts/test", methods=["POST"])
+    @require_admin
+    def admin_test_google():
+        """Gera uma frase em cada voz Google do catálogo e diz quais funcionam com a chave atual."""
+        key = google_tts.api_key()
+        if not key:
+            return jsonify({"error": "Nenhuma chave cadastrada."}), 400
+        try:
+            available = set(google_tts.list_voices(key))
+        except Exception as e:
+            return jsonify({"error": f"O Google recusou a chave: {e}"}), 400
+        results = []
+        for v in get_extended_voice_catalog():
+            info = get_voice_metadata(v["id"])
+            if info.get("engine") != "google":
+                continue
+            name = info.get("google_voice")
+            audio = google_tts.synthesize_mp3("Teste de voz.", name, key=key) if name in available else None
+            results.append({"id": v["id"], "name": v["name"], "google_voice": name, "ok": bool(audio),
+                            "error": None if audio else ("Voz não existe para esta conta" if name not in available
+                                                         else google_tts.last_error.get("message"))})
+        _premium_down_until[0] = 0.0
+        return jsonify({"results": results})
 
     # 6. Catálogo de vozes (com vozes clonadas)
     @app.route("/api/voices", methods=["GET"])

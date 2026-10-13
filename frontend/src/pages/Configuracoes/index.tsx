@@ -14,6 +14,7 @@ import type { UserProfile } from '../../services/api';
 import { ReadingStatsPanel } from '../../components/ReadingStatsPanel';
 import { AccountSecurityCard } from '../../components/AccountSecurityCard';
 import { OfflineDownloadsCard } from '../../components/OfflineDownloadsCard';
+import { AdminSettingsCard } from '../../components/AdminSettingsCard';
 
 interface ConfiguracoesProps {
   settings: ReaderSettings;
@@ -189,6 +190,8 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
       </div>
 
       <AccountSecurityCard user={user} />
+
+      {user.is_admin && <AdminSettingsCard />}
 
       <OfflineDownloadsCard />
 

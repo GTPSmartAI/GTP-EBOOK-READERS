@@ -34,7 +34,7 @@ while (`$true) {
 if (Test-Port 4000) {
     Write-Host '[backend]  porta 4000 já está em uso, não iniciei outro' -ForegroundColor Yellow
 } else {
-    $backend = "`$host.UI.RawUI.WindowTitle = 'Backend (4000)'; `$env:PYTHONIOENCODING='utf-8'; Set-Location '$root\backend'; python api_server.py"
+    $backend = "`$host.UI.RawUI.WindowTitle = 'Backend (4000)'; `$env:PYTHONIOENCODING='utf-8'; `$env:PYTHONUTF8='1'; Set-Location '$root\backend'; python api_server.py"
     Start-Process powershell -ArgumentList '-NoExit', '-Command', $backend
     Write-Host '[backend]  iniciado em http://localhost:4000' -ForegroundColor Green
 }

@@ -65,13 +65,13 @@ def register_cloned_voice(
         storage_url = f"/api/audio/sample/{sample_filename}"
 
     # 3. Determina parâmetros neurais com base no estilo selecionado
-    if not base_voice:
-        if gender == "female":
-            base_edge_voice = "pt-BR-FranciscaNeural"
-        else:
-            base_edge_voice = "pt-BR-AntonioNeural"
+    # Base no Google Cloud (vozes PRO); só aceita como base um nome de voz do Google
+    if base_voice and str(base_voice).startswith("pt-BR-Chirp3-HD-"):
+        base_google_voice = base_voice
+    elif gender == "female":
+        base_google_voice = "pt-BR-Chirp3-HD-Kore"
     else:
-        base_edge_voice = base_voice
+        base_google_voice = "pt-BR-Chirp3-HD-Charon"
 
     # Ajuste de pitch baseado no estilo se não informado explicitamente
     if not pitch_adjustment:
@@ -120,7 +120,8 @@ def register_cloned_voice(
         "stability": 0.92,
         "clarity": 0.97,
         "speed": 1.0,
-        "edge_voice": base_edge_voice,
+        "engine": "google",
+        "google_voice": base_google_voice,
         "pitch": final_pitch,
         "rate": final_rate,
         "cadence": final_cadence

@@ -182,7 +182,32 @@ _NEW_TABLES = {
           INDEX `idx_folders_user` (`user_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
+    # Configurações do sistema que o administrador muda pelo app (ex.: chave do Google Cloud das vozes PRO)
+    "app_settings": """
+        CREATE TABLE IF NOT EXISTS `app_settings` (
+          `setting_key` VARCHAR(64) NOT NULL PRIMARY KEY,
+          `setting_value` TEXT NULL,
+          `updated_at` DATETIME NULL,
+          `updated_by` VARCHAR(255) NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
 }
+
+
+def get_app_setting(key: str) -> Optional[str]:
+    row = get_mariadb_client().execute_one(
+        "SELECT `setting_value` FROM `app_settings` WHERE `setting_key` = %s", (key,)
+    )
+    return row["setting_value"] if row else None
+
+
+def set_app_setting(key: str, value: Optional[str], updated_by: str) -> None:
+    get_mariadb_client().execute_non_query(
+        "INSERT INTO `app_settings` (`setting_key`, `setting_value`, `updated_at`, `updated_by`) VALUES (%s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`), `updated_at` = VALUES(`updated_at`), "
+        "`updated_by` = VALUES(`updated_by`)",
+        (key, value, get_now_br().strftime("%Y-%m-%d %H:%M:%S"), updated_by),
+    )
 
 
 def ensure_schema() -> None:
@@ -589,7 +614,7 @@ def save_cloned_voice_to_db(voice_data: Dict[str, Any]) -> bool:
             voice_data.get("pitch", "-5Hz"),
             voice_data.get("rate", "-2%"),
             voice_data.get("cadence", "natural"),
-            voice_data.get("edge_voice", "pt-BR-AntonioNeural"),
+            voice_data.get("google_voice", "pt-BR-Chirp3-HD-Charon"),
             voice_data.get("sampleAudioUrl", ""),
             json.dumps(voice_data, ensure_ascii=False),
             now
