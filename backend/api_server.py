@@ -706,18 +706,79 @@ def create_app() -> Flask:
     PREMIUM_RETRY_S = 120
     _premium_down_until = [0.0]
 
+    # Trechos sendo gerados agora (chave do áudio -> pedido). Um segundo pedido do mesmo trecho espera o
+    # primeiro em vez de gerar de novo; se for urgente, promove o primeiro na fila do Pocket.
+    class _Job:
+        def __init__(self, urgent):
+            self.done = threading.Event()
+            self.ticket = pocket_engine.Ticket(urgent)
+            self.result = None
+
+    _inflight = {}
+    _inflight_lock = threading.Lock()
+
+    class _Batch:
+        """Lugares na fila de um lote de pré-carregamento, para cancelar todos se o leitor desistir dele."""
+        def __init__(self):
+            self.stopped = False
+            self.tickets = []
+            self._lock = threading.Lock()
+
+        def add(self, ticket):
+            with self._lock:
+                self.tickets.append(ticket)
+                if self.stopped:
+                    pocket_engine.cancel([ticket])
+
+        def stop(self):
+            with self._lock:
+                self.stopped = True
+                pocket_engine.cancel(self.tickets)
+
     def synthesize_to_cache(text: str, voice_id: str, rate: float, pitch_override, rate_override, cadence,
-                            urgent: bool = False):
+                            urgent: bool = False, batch=None):
         """
         Sintetiza o trecho (ou reaproveita do cache) e devolve (chave do áudio na RAM, voz do plano B ou None).
         A chave depende só do texto e dos parâmetros de voz, então o mesmo trecho pedido
-        pelo lote e pelo /synthesize é gerado uma única vez.
+        pelo lote e pelo /synthesize é gerado uma única vez (mesmo se pedido enquanto ainda está gerando).
         urgent=True: trecho que o leitor vai tocar agora (passa na frente do pré-carregamento no Pocket).
+        batch: o lote (_Batch) que pediu, para cancelar seus pedidos na fila se o leitor desistir dele.
+        Levanta pocket_engine.Cancelled se o lote foi cancelado antes de gerar.
         """
         key_source = f"{text}|{voice_id}|{rate}|{pitch_override}|{rate_override}|{cadence}"
         audio_key = hashlib.md5(key_source.encode("utf-8")).hexdigest()
-        if get_audio_from_ram(audio_key) is not None:
-            return audio_key, None
+        while True:
+            if get_audio_from_ram(audio_key) is not None:
+                return audio_key, None
+            with _inflight_lock:
+                job = _inflight.get(audio_key)
+                owner = job is None
+                if owner:
+                    job = _inflight[audio_key] = _Job(urgent)
+            if owner:
+                break
+            if urgent:
+                pocket_engine.promote(job.ticket)
+            job.done.wait(timeout=180)
+            if job.result and job.result[0]:
+                return job.result
+            if batch is not None and batch.stopped:
+                raise pocket_engine.Cancelled()
+            # quem gerava foi cancelado ou falhou: tenta gerar aqui
+
+        if batch is not None:
+            batch.add(job.ticket)
+        try:
+            job.result = _synthesize_uncached(audio_key, text, voice_id, rate, pitch_override, rate_override,
+                                              cadence, urgent, job.ticket)
+            return job.result
+        finally:
+            with _inflight_lock:
+                _inflight.pop(audio_key, None)
+            job.done.set()
+
+    def _synthesize_uncached(audio_key, text, voice_id, rate, pitch_override, rate_override, cadence, urgent,
+                             ticket):
         is_premium = get_voice_metadata(voice_id).get("engine") == "google"
         if is_premium and time.time() < _premium_down_until[0]:
             return synthesize_to_cache(text, DEFAULT_VOICE_ID, rate, None, None, cadence, urgent)[0], DEFAULT_VOICE_ID
@@ -729,6 +790,7 @@ def create_app() -> Flask:
             rate_override=rate_override,
             cadence=cadence,
             urgent=urgent,
+            ticket=ticket,
         )
         if not audio_bytes:
             if voice_id == DEFAULT_VOICE_ID:
@@ -908,8 +970,11 @@ def create_app() -> Flask:
 
         results = []
         from concurrent.futures import ThreadPoolExecutor
+        batch = _Batch()
 
         def _synthesize_worker(task):
+            if batch.stopped:
+                return None
             idx = task["index"]
             sentence = task["text"]
             import re
@@ -930,6 +995,7 @@ def create_app() -> Flask:
                     task["pitch_override"],
                     task["rate_override"],
                     task["cadence"],
+                    batch=batch,
                 )
                 if audio_key:
                     return {
@@ -939,6 +1005,8 @@ def create_app() -> Flask:
                         "is_silence": False,
                         "fallback_voice": fallback,
                     }
+            except pocket_engine.Cancelled:
+                pass
             except Exception as e:
                 print(f"[TTS RAM Worker] Erro no item {idx}: {e}")
             return None
@@ -949,12 +1017,19 @@ def create_app() -> Flask:
             from concurrent.futures import as_completed
 
             def _stream_results():
-                with ThreadPoolExecutor(max_workers=6) as executor:
+                # Se o leitor cancelar o lote (pulou de trecho, trocou de voz ou de livro), a conexão cai e o
+                # gerador é fechado: o que ainda esperava na fila do Pocket é cancelado em vez de gerar à toa
+                # na frente dos trechos que ele precisa agora
+                executor = ThreadPoolExecutor(max_workers=6)
+                try:
                     futures = [executor.submit(_synthesize_worker, t) for t in task_list]
                     for fut in as_completed(futures):
                         r = fut.result()
                         if r is not None:
                             yield json.dumps(r, ensure_ascii=False) + "\n"
+                finally:
+                    batch.stop()
+                    executor.shutdown(wait=False, cancel_futures=True)
 
             return Response(_stream_results(), mimetype="application/x-ndjson",
                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

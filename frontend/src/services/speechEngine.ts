@@ -248,14 +248,22 @@ class SpeechEngine {
 
   /** Descarta o áudio já gerado e cancela os lotes em andamento, liberando lotes novos na hora */
   private clearBuffer() {
+    this.cancelBatches();
+    this.audioBuffer.clear();
+    this.preloadedNextAudio = null;
+  }
+
+  /**
+   * Cancela os lotes em andamento (o áudio já pronto fica). Usado também num salto para longe: o servidor
+   * tira da fila o que o lote antigo ainda ia gerar, em vez de gerar isso antes dos trechos do ponto novo.
+   */
+  private cancelBatches() {
     this.bufferVersion++;
     this.bufferAbort.abort();
     this.bufferAbort = new AbortController();
-    this.audioBuffer.clear();
     this.inFlight.clear();
     this.activeBatches = 0;
     this.prefetchBackoffUntil = 0;
-    this.preloadedNextAudio = null;
   }
 
   /** Nova sessão de reprodução: cancela a síntese que a sessão anterior ainda esperava */
@@ -469,6 +477,7 @@ class SpeechEngine {
     // O áudio pré-carregado é mantido: no avanço normal ele é exatamente o próximo trecho
     // (playHtmlAudio só o usa se índice e URL baterem, então num salto ele é simplesmente ignorado)
     const validIndex = Math.max(0, Math.min(index, this.sentences.length - 1));
+    if (!this.audioBuffer.has(validIndex) && !this.inFlight.has(validIndex)) this.cancelBatches();
     this.currentIndex = validIndex;
     this.callbacks.onSentenceChange(validIndex);
 
@@ -507,6 +516,7 @@ class SpeechEngine {
     this.discardCurrentAudio();
 
     const validIndex = Math.max(0, Math.min(sentenceIndex, this.sentences.length - 1));
+    if (!this.audioBuffer.has(validIndex) && !this.inFlight.has(validIndex)) this.cancelBatches();
     this.currentIndex = validIndex;
     this.preloadedNextAudio = null;
     this.callbacks.onSentenceChange(validIndex);
@@ -617,7 +627,9 @@ class SpeechEngine {
       this.setStatus('buffering');
       this.callbacks.onBufferProgress?.(true, 'Carregando voz neural...');
 
-      const split = splitHead(text);
+      // Trecho já na fila de um lote: pede a frase inteira, que o servidor promove na fila em vez de gerar
+      // de novo (dividir geraria início + resto além da frase do lote)
+      const split = this.inFlight.has(currentIdx) ? null : splitHead(text);
       if (split) {
         const started = await this.playSplit(currentIdx, split, sessionId, retryCount);
         if (!started) this.handlePlaybackFailure(currentIdx, sessionId, retryCount);
@@ -658,8 +670,10 @@ class SpeechEngine {
     const voice = this.getVoiceForSentence(index);
     // O resto tem cancelamento próprio: pausar durante o início não pode perdê-lo
     const tailAbort = new AbortController();
+    // O início é pedido primeiro: o servidor (Pocket) gera um por vez, na ordem de chegada
+    const headPromise = this.synthesize(head, voice, this.sessionAbort.signal);
     const tailUrl = this.synthesize(tail, voice, tailAbort.signal);
-    const headUrl = await this.synthesize(head, voice, this.sessionAbort.signal);
+    const headUrl = await headPromise;
     if (this.playSessionId !== sessionId || this.currentIndex !== index) {
       tailAbort.abort();
       return true;
