@@ -4,8 +4,12 @@ Leitor de livros com voz, **que roda inteiro no celular**: importa PDF, EPUB, DO
 
 A voz é gerada no processador do próprio celular (vozes Piper pelo motor sherpa-onnx).
 
-> A versão anterior, com servidor (VPS, MariaDB, MinIO, login, plano PRO), está guardada em
-> [`servidor-arquivado/`](servidor-arquivado/README.md) e na etiqueta do Git `versao-servidor-vps`.
+> A versão anterior, com servidor (VPS, MariaDB, MinIO, login, plano PRO), está guardada no Git em
+> [`servidor-arquivado/`](servidor-arquivado/README.md) e na etiqueta `versao-servidor-vps`.
+> Neste PC a pasta fica **fora do disco** (sparse-checkout): os commits não mexem nela e ela continua no GitHub.
+> Para trazer de volta: `git sparse-checkout disable`. Para tirar de novo:
+> `git sparse-checkout set --no-cone '/*' '!/servidor-arquivado/'`.
+> O `.env` da VPS e os livros já processados (fora do Git) estão em `Documentos\Aedolia - dados do servidor antigo`.
 
 ## Como usar
 
