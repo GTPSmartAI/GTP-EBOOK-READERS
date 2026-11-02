@@ -31,7 +31,7 @@ const FOLLOW_LINE_AT = 0.35; // altura da tela (fração, de cima) onde fica a l
 const FONT_FAMILY = { sans: 'var(--font-sans)', serif: 'var(--font-serif)', mono: 'var(--font-mono)' };
 const MAX_WIDTH = { narrow: '620px', medium: '740px', wide: '900px', full: '100%' };
 
-/** Parágrafos do livro: estrutura do backend ou, em livros antigos, marcação por "\n" / grupos de 4 frases */
+/** Parágrafos do livro: estrutura da importação ou, em livros antigos, marcação por "\n" / grupos de 4 frases */
 function buildParagraphs(book: Book): ParagraphInfo[] {
   const total = book.sentences?.length || 0;
   const kinds = book.sentenceKinds;
@@ -453,17 +453,20 @@ export const ReaderView: React.FC<ReaderViewProps> = ({
           {paragraphs.length === 0 ? (
             contentLoad?.failed ? (
               <div className="reader-empty">
-                <p>Não foi possível baixar o texto do livro. Verifique a internet.</p>
+                <p>
+                  O texto deste livro não está neste aparelho (ficava no servidor antigo). Importe o arquivo do livro
+                  de novo: o ponto de leitura salvo continua valendo.
+                </p>
                 {onRetryContent && (
-                  <button className="reader-retry-button" onClick={onRetryContent}>Tentar de novo</button>
+                  <button className="reader-retry-button" onClick={onRetryContent}>Importar o arquivo</button>
                 )}
               </div>
             ) : (
               <div className="reader-empty">
                 <p>
                   {contentLoad && contentLoad.progress > 0
-                    ? `Baixando o livro... ${Math.round(contentLoad.progress * 100)}%`
-                    : 'Carregando o texto do livro...'}
+                    ? `Preparando o livro... ${Math.round(contentLoad.progress * 100)}%`
+                    : 'Abrindo o livro...'}
                 </p>
                 {contentLoad && contentLoad.progress > 0 && (
                   <div className="reader-load-bar">

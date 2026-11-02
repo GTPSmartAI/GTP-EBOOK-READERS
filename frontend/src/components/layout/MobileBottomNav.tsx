@@ -12,7 +12,7 @@ interface MobileBottomNavProps {
   onOpenUpload: () => void;
 }
 
-/** Menu do celular: Início, Leitor, [+ subir livro], Vozes, Configurações. Só ícones. */
+/** Menu do celular: Início, Leitor, [+ importar livro], Vozes, Configurações. Só ícones. */
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activePage, onNavigate, onOpenUpload }) => {
   const tab = (id: AppPage, label: string, Icon: typeof Home) => {
     const active = activePage === id;
@@ -65,7 +65,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activePage, on
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <button
           onClick={onOpenUpload}
-          aria-label="Subir livro"
+          aria-label="Importar livro"
           style={{
             width: '50px',
             height: '50px',

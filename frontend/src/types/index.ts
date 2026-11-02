@@ -13,7 +13,7 @@ export interface Book {
   type: 'pdf' | 'epub' | 'txt' | 'article' | 'docx' | 'doc' | 'md' | 'mobi' | string;
   content: string; // full raw text
   sentences: string[]; // unidades faladas: frases, e dentro delas os trechos de fala e de narração separados
-  // Estrutura gerada pelo backend (text_pipeline). Ausente em livros processados antes da versão 2.
+  // Estrutura gerada ao importar (services/bookImport/textPipeline.ts). Ausente em livros processados antes da versão 2.
   paragraphStarts?: number[]; // índice da primeira unidade de cada parágrafo
   sentenceKinds?: string; // um caractere por unidade: 'n' narração, 'd' fala, 's' texto entre [colchetes], 'h' título
   structureVersion?: number; // versão do text_pipeline que gerou a estrutura
@@ -21,7 +21,7 @@ export interface Book {
   totalWords: number;
   readingProgress: number; // percentage 0-100
   lastReadSentenceIndex: number;
-  progressReadAt?: number; // quando o ponto de leitura mudou (ms); entre aparelhos vale o mais recente
+  progressReadAt?: number; // quando o ponto de leitura mudou (ms)
   durationMinutes: number;
   uploadedAt: string;
   fileUrl?: string;
@@ -29,7 +29,7 @@ export interface Book {
   uploadProgress?: number;
   userId?: string;
   folderId?: string | null; // pasta da estante (BookFolder.id); null = sem pasta
-  contentRev?: number; // sobe quando o servidor reprocessa o texto; cópia local com outro valor é baixada de novo
+  contentRev?: number; // legado do servidor
 }
 
 /** Pasta criada pelo usuário para organizar a estante */
@@ -53,14 +53,9 @@ export interface VoiceOption {
   clarity: number; // 0 to 1
   speed: number;
   cadence?: 'espacosa' | 'dramatica' | 'natural';
-  pitch?: string;
-  rate?: string;
-  sampleAudioUrl?: string;
-  tier?: 'premium' | 'basic'; // basic = plano grátis (Piper/Pocket); premium = só PRO (Google Cloud)
-  engine?: 'piper' | 'pocket' | 'google';
-  isCloned?: boolean;
-  userId?: string;
-  createdAt?: number;
+  engine: 'piper';
+  model: string; // pasta do modelo Piper dentro do APK (assets/tts/<model>)
+  lengthScale: number; // ritmo da voz: maior = mais devagar
 }
 
 export type ThemeMode = 'dark' | 'sepia' | 'light' | 'oled';

@@ -7,14 +7,27 @@ android {
         applicationId "br.com.iagtp.ebook"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // 2: app sem servidor (voz gerada no celular). Sobe a cada versão; a assinatura (chave debug) não pode mudar
+        versionCode 2
+        versionName "2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Motor de voz só para celulares 64 bits (todos os Android dos últimos anos): poupa ~25 MB por arquitetura
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+    }
+    // Vozes Piper e fonética (baixadas por deploy\baixar-motor-voz.ps1, fora do Git): vão para assets/tts.
+    // Sem compressão: o modelo é lido direto do APK.
+    sourceSets {
+        main.assets.srcDirs += ['../tts-assets']
+    }
+    androidResources {
+        noCompress += ['onnx']
     }
     buildTypes {
         release {
@@ -38,6 +51,9 @@ dependencies {
     implementation project(':capacitor-android')
     // Player da notificação / tela de bloqueio (MediaSession + MediaStyle), usado pelo PlaybackService
     implementation "androidx.media:media:1.7.0"
+    // Voz gerada no celular (LocalTtsEngine): sherpa-onnx (onnxruntime + espeak-ng), escrito em Kotlin
+    implementation(name: 'sherpa-onnx-1.13.8', ext: 'aar')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.1.21"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

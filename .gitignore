@@ -17,51 +17,25 @@ apk/
 frontend/android/keystore.properties
 *.local
 
-# Python & Ambientes Virtuais
+# Python (ajudante de voz do PC, scripts das ferramentas e backend arquivado)
+.pc-voz/
 __pycache__/
-*/__pycache__/
-*/*/__pycache__/
-*/*/*/__pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-ENV/
 build/
-develop-eggs/
-eggs/
-.eggs/
-parts/
-var/
-sdist/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Logs e arquivos de execução
+# Logs
 *.log
-automation.log
-backend/automation.log
 
-# Uploads locais de teste e cache de áudio
-backend/uploads/audio_cache/*
-backend/uploads/cloned_samples/*
-backend/uploads/*.pdf
-backend/uploads/*.txt
-# Livros enviados, texto extraído e vozes personalizadas (dados gerados em runtime)
-backend/uploads/books/
-backend/uploads/extracted/
-backend/uploads/custom_voices.json
-!backend/uploads/.gitkeep
-!backend/uploads/audio_cache/.gitkeep
-!backend/uploads/cloned_samples/.gitkeep
+# Versão com servidor arquivada: dados gerados em execução (livros enviados, cache, modelos de voz)
+servidor-arquivado/backend/models/
+servidor-arquivado/backend/uploads/*
+!servidor-arquivado/backend/uploads/.gitkeep
+!servidor-arquivado/backend/uploads/cloned_samples/
+servidor-arquivado/backend/uploads/cloned_samples/*
+!servidor-arquivado/backend/uploads/cloned_samples/.gitkeep
 
-# Variáveis de ambiente sensíveis
+# Variáveis de ambiente
 .env
-backend/.env
 .env.local
 .env.*.local
 
@@ -70,6 +44,3 @@ backend/.env
 .idea/
 .DS_Store
 Thumbs.db
-
-# Modelos de voz (baixados pelo Dockerfile; localmente em backend/models/piper)
-backend/models/

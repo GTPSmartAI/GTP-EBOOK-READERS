@@ -10,7 +10,6 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -37,7 +36,7 @@ import java.util.concurrent.Executors;
  * - Sem ele, o Android congela o app quando a tela apaga e a voz para no fim da frase.
  * - Mostra o player de mídia (notificação e tela de bloqueio): capa, "Livro – Capítulo",
  *   barra de progresso do capítulo e os botões -15s / play / +15s. Os fones Bluetooth também controlam.
- * - Enquanto toca, segura o processador (wake lock) e o Wi-Fi para baixar os próximos áudios.
+ * - Enquanto toca, segura o processador (wake lock): a voz dos próximos trechos é gerada no próprio celular.
  */
 public class PlaybackService extends Service {
 
@@ -75,7 +74,6 @@ public class PlaybackService extends Service {
 
     private MediaSessionCompat session;
     private PowerManager.WakeLock wakeLock;
-    private WifiManager.WifiLock wifiLock;
     private final ExecutorService coverLoader = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -339,13 +337,6 @@ public class PlaybackService extends Service {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ebook:leitura");
             wakeLock.setReferenceCounted(false);
         }
-        if (wifiLock == null) {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            if (wm != null) {
-                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ebook:leitura");
-                wifiLock.setReferenceCounted(false);
-            }
-        }
     }
 
     private void setLocks(boolean hold) {
@@ -353,10 +344,8 @@ public class PlaybackService extends Service {
             ensureLocks();
             // Sempre chama: tira o prazo de um holdBriefly() anterior
             wakeLock.acquire();
-            if (wifiLock != null && !wifiLock.isHeld()) wifiLock.acquire();
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-            if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         }
     }
 

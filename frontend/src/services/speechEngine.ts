@@ -1,9 +1,7 @@
 import type { VoiceOption } from '../types';
 import { VOICES } from '../data/voices';
-import { BACKEND_URL } from '../config';
-import { apiFetch } from './session';
 import { audioDiagnostics, AUDIO_DIAGNOSTICS, type AudioOrigin } from './audioDiagnostics';
-import { activateOfflineBook, offlineClipUrl, type SynthParams } from './offlineAudio';
+import { cancelAllSynthesis, lastSynthesisError, synthesize as synthesizeLocal } from './localTts';
 
 export type PlaybackStatus = 'idle' | 'playing' | 'paused' | 'buffering';
 
@@ -14,22 +12,22 @@ export interface SpeechEngineCallbacks {
   onBufferProgress?: (isBuffering: boolean, progressText: string) => void;
   /** Palavras de um trecho que a voz terminou de ler (estatísticas de leitura real) */
   onWordsRead?: (words: number) => void;
-  /** Aviso para a tela (ex.: sem internet num trecho que não foi baixado) */
+  /** Aviso para a tela (ex.: a voz falhou) */
   onNotice?: (message: string) => void;
 }
 
-const OFFLINE_MISSING = 'Sem internet: este trecho não foi baixado. Baixe os capítulos em "Capítulos" para ouvir offline.';
-
-// Quantas vezes um trecho é ressintetizado (erro de rede ou áudio expirado no cache do servidor) antes de pular
+// Quantas vezes um trecho é gerado de novo (falha do motor ou áudio que não tocou) antes de pular
 const MAX_RETRIES = 2;
 // Unidades pedidas em cada lote de pré-carregamento
 const PREFETCH_BATCH = 12;
 // Trechos mantidos prontos adiante em qualquer velocidade (acima de 2.5x cresce junto com a velocidade)
 const MIN_LOOKAHEAD = 30;
-// Lotes de pré-carregamento que podem correr ao mesmo tempo
+// Lotes de pré-carregamento que podem estar na fila do motor ao mesmo tempo
 const MAX_PARALLEL_BATCHES = 2;
 // Espera antes de voltar a pré-carregar depois de um lote que não trouxe nenhum áudio
 const PREFETCH_BACKOFF_MS = 3000;
+// O motor gera no celular: a primeira frase espera a voz carregar (alguns segundos); depois disso é bem mais rápido
+const SYNTH_TIMEOUT_MS = 60000;
 // Pausa extra ao terminar um parágrafo, por cadência da voz (ms em velocidade 1x)
 const PARAGRAPH_PAUSE_MS: Record<string, number> = {
   natural: 280,
@@ -39,7 +37,7 @@ const PARAGRAPH_PAUSE_MS: Record<string, number> = {
 };
 
 // Trecho sem áudio pronto com pelo menos esta quantidade de palavras começa por um pedaço curto,
-// que é sintetizado bem mais rápido, enquanto o resto é gerado em paralelo
+// que é gerado bem mais rápido, enquanto o resto é gerado em seguida
 const SPLIT_MIN_WORDS = 12;
 const HEAD_MAX_WORDS = 8;
 const HEAD_DEFAULT_WORDS = 6;
@@ -66,16 +64,6 @@ interface WordSegment {
 
 const wordsOf = (text: string) => text.split(/\s+/).filter(Boolean);
 
-/** Parâmetros de síntese próprios de cada voz (cada personagem mantém seu tom e ritmo) */
-function voiceSynthesisParams(voice: VoiceOption): SynthParams {
-  return {
-    voice_id: voice.id,
-    cadence: voice.cadence || 'natural',
-    pitch_override: voice.pitch ?? null,
-    rate_override: voice.rate ?? null,
-  };
-}
-
 class SpeechEngine {
   private currentAudio: HTMLAudioElement | null = null;
   private preloadedNextAudio: { index: number; audio: HTMLAudioElement } | null = null;
@@ -87,20 +75,18 @@ class SpeechEngine {
   // Muda a cada troca de livro/voz: lotes antigos são cancelados e o que ainda chegar deles é ignorado
   private bufferVersion: number = 0;
   private bufferAbort: AbortController = new AbortController();
-  // Cancela a síntese pedida pela sessão anterior (pausa, pulo, clique repetido no play), liberando a conexão
+  // Cancela a síntese pedida pela sessão anterior (pausa, pulo, clique repetido no play)
   private sessionAbort: AbortController = new AbortController();
-  // Resto do trecho quando o início foi sintetizado separado para começar a tocar mais rápido
+  // Resto do trecho quando o início foi gerado separado para começar a tocar mais rápido
   private splitTail: { index: number; url: Promise<string | null>; abort: AbortController; audio?: HTMLAudioElement; segment: WordSegment } | null = null;
   // Palavras do trecho que o áudio atual cobre (frase inteira, início/resto de frase dividida ou a partir de um clique)
   private currentSegment: WordSegment | null = null;
   private sentences: string[] = [];
-  // Livro aberto: procura os trechos baixados para ouvir sem internet
   private bookId: string = '';
   private paragraphStarts: Set<number> = new Set();
   private currentIndex: number = 0;
   private status: PlaybackStatus = 'idle';
   private rate: number = 1.0;
-  private emotion: string = 'suspense';
   private voiceOption: VoiceOption = VOICES[0]; // voz padrão do catálogo
   private voiceResolver: ((sentenceIndex: number) => VoiceOption | null) | null = null;
   private callbacks: SpeechEngineCallbacks = {
@@ -124,40 +110,9 @@ class SpeechEngine {
     this.resetBufferAndRestart();
   }
 
-  /** Livro aberto (carrega os capítulos baixados dele). Chamar antes de setSentences. */
+  /** Livro aberto. Chamar antes de setSentences. */
   public setBook(bookId: string) {
     this.bookId = bookId;
-    activateOfflineBook(bookId).then(() => {
-      // Os trechos baixados passam a valer já no próximo pré-carregamento
-      if (this.bookId === bookId) this.prefetchAhead(this.currentIndex, 8);
-    });
-  }
-
-  /** Voz e parâmetros de síntese de um trecho, como o player usa (para baixar capítulos) */
-  public synthesisParamsFor(sentenceIndex: number): SynthParams {
-    return voiceSynthesisParams(this.getVoiceForSentence(sentenceIndex));
-  }
-
-  /** Áudio baixado do trecho, se existir */
-  private offlineUrl(index: number): string | null {
-    const text = this.sentences[index] || '';
-    return offlineClipUrl(this.bookId, index, text, voiceSynthesisParams(this.getVoiceForSentence(index)));
-  }
-
-  /** Áudio do trecho: o baixado vem antes do link do servidor (que pode ter sido pedido antes do download) */
-  private bufferedUrl(index: number): string | undefined {
-    const buffered = this.audioBuffer.get(index);
-    if (buffered === 'SILENCE' || buffered?.startsWith('blob:')) return buffered;
-    return this.offlineUrl(index) ?? buffered;
-  }
-
-  /** Sem internet e sem o trecho baixado: pausa e avisa (em vez de pular trecho por trecho) */
-  private stopForOffline(): boolean {
-    if (navigator.onLine) return false;
-    this.callbacks.onBufferProgress?.(false, '');
-    this.pause();
-    this.callbacks.onNotice?.(OFFLINE_MISSING);
-    return true;
   }
 
   public getVoiceForSentence(sentenceIndex: number): VoiceOption {
@@ -175,7 +130,7 @@ class SpeechEngine {
     this.clearBuffer();
     this.currentIndex = Math.max(0, Math.min(startIndex, sentences.length - 1));
 
-    // Inicia pré-carregamento imediato das primeiras unidades para a leitura começar sem espera
+    // Pré-carrega as primeiras unidades para a leitura começar sem espera
     this.prefetchAhead(this.currentIndex, 8);
   }
 
@@ -188,7 +143,7 @@ class SpeechEngine {
     }
   }
 
-  /** Velocidade aplicada só na reprodução (playbackRate): o áudio sintetizado é sempre 1x e segue válido no cache */
+  /** Velocidade aplicada só na reprodução (playbackRate): o áudio gerado é sempre 1x e segue válido no cache */
   public setRate(rate: number) {
     this.rate = rate;
     if (this.currentAudio) {
@@ -201,11 +156,6 @@ class SpeechEngine {
     if (this.status === 'playing' || this.status === 'buffering') {
       this.prefetchAhead(this.currentIndex + 1, this.lookahead());
     }
-  }
-
-  public setEmotion(emotion: string) {
-    this.emotion = emotion;
-    this.resetBufferAndRestart();
   }
 
   public getCurrentIndex(): number {
@@ -254,7 +204,7 @@ class SpeechEngine {
   }
 
   /**
-   * Cancela os lotes em andamento (o áudio já pronto fica). Usado também num salto para longe: o servidor
+   * Cancela os lotes em andamento (o áudio já pronto fica). Usado também num salto para longe: o motor
    * tira da fila o que o lote antigo ainda ia gerar, em vez de gerar isso antes dos trechos do ponto novo.
    */
   private cancelBatches() {
@@ -279,7 +229,7 @@ class SpeechEngine {
   }
 
   private buildPrefetchItems(fromIndex: number, count: number) {
-    const items: { index: number; text: string; voice_id: string; cadence: string; pitch_override: string | null; rate_override: string | null }[] = [];
+    const items: { index: number; text: string; voice: VoiceOption }[] = [];
     const maxIndex = Math.min(this.sentences.length, fromIndex + count);
     for (let i = fromIndex; i < maxIndex; i++) {
       if (this.audioBuffer.has(i) || this.inFlight.has(i)) continue;
@@ -288,88 +238,39 @@ class SpeechEngine {
         this.audioBuffer.set(i, 'SILENCE');
         continue;
       }
-      const offline = this.offlineUrl(i);
-      if (offline) {
-        this.audioBuffer.set(i, offline);
-        continue;
-      }
-      items.push({ index: i, text, ...voiceSynthesisParams(this.getVoiceForSentence(i)) });
+      items.push({ index: i, text, voice: this.getVoiceForSentence(i) });
     }
     return items;
   }
 
-  /**
-   * Pede um lote em streaming: cada trecho entra no buffer assim que o servidor termina de gerá-lo,
-   * sem esperar o trecho mais lento do lote
-   */
+  /** Pede um lote ao motor: cada trecho entra no buffer assim que fica pronto, sem esperar os outros */
   private async fetchBatch(items: ReturnType<SpeechEngine['buildPrefetchItems']>): Promise<number> {
     // Se a voz/livro mudar no meio do lote, ele é cancelado e o que ainda chegar é descartado
     const version = this.bufferVersion;
-    const res = await apiFetch('/api/tts/prefetch-batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: this.bufferAbort.signal,
-      body: JSON.stringify({ items, emotion: this.emotion, rate: 1.0, stream: true }),
-    });
-    if (!res.ok || !res.body) return 0;
-
+    const signal = this.bufferAbort.signal;
     let received = 0;
-    const applyItem = (item: { index: number; is_silence?: boolean; audio_url?: string | null; fallback_voice?: string | null }) => {
-      if (version !== this.bufferVersion) return;
-      if (item.fallback_voice) this.noticeFallback(this.getVoiceForSentence(item.index));
-      if (item.is_silence) {
-        this.audioBuffer.set(item.index, 'SILENCE');
-      } else if (item.audio_url) {
-        this.audioBuffer.set(item.index, `${BACKEND_URL}${item.audio_url}`);
+    await Promise.all(
+      items.map(async (item) => {
+        const result = await synthesizeLocal(item.text, item.voice, { signal });
+        if (version !== this.bufferVersion || !result) return;
+        this.audioBuffer.set(item.index, result.url);
+        this.inFlight.delete(item.index);
+        received++;
         if (item.index === this.currentIndex + 1 && !this.preloadedNextAudio) {
           this.primeNextAudioElement(item.index);
         }
-      } else {
-        return;
-      }
-      this.inFlight.delete(item.index);
-      received++;
-    };
-
-    // Backend sem suporte a streaming (versão antiga ainda rodando): o lote vem inteiro num JSON só
-    if (!(res.headers.get('Content-Type') || '').includes('ndjson')) {
-      const data = await res.json();
-      if (data?.success && Array.isArray(data.items)) data.items.forEach(applyItem);
-      return received;
-    }
-
-    const applyLine = (line: string) => {
-      if (!line.trim()) return;
-      try {
-        applyItem(JSON.parse(line));
-      } catch {
-        // linha incompleta/inválida: ignora
-      }
-    };
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let pending = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      pending += decoder.decode(value, { stream: true });
-      const lines = pending.split('\n');
-      pending = lines.pop() ?? '';
-      lines.forEach(applyLine);
-    }
-    applyLine(pending + decoder.decode());
+      })
+    );
     return received;
   }
 
   /**
    * Pede adiantado os trechos de [fromIndex, fromIndex + count) que ainda não têm áudio nem estão a caminho,
-   * em lotes paralelos, respeitando a voz de cada trecho/personagem
+   * em lotes, respeitando a voz de cada trecho/personagem
    */
   private prefetchAhead(fromIndex: number, count: number) {
     if (this.sentences.length === 0 || Date.now() < this.prefetchBackoffUntil) return;
     const items = this.buildPrefetchItems(fromIndex, count);
-    if (!navigator.onLine) return; // os baixados já entraram no buffer; o resto espera a internet
     while (items.length > 0 && this.activeBatches < MAX_PARALLEL_BATCHES) {
       this.runBatch(items.splice(0, PREFETCH_BATCH));
     }
@@ -383,16 +284,16 @@ class SpeechEngine {
     try {
       received = await this.fetchBatch(items);
     } catch (e) {
-      // Buffer em background resiliente: o trecho é sintetizado na hora se faltar
-      if ((e as Error)?.name !== 'AbortError') console.warn('[Buffer] Falha temporária no pré-carregamento:', e);
+      // Buffer em background resiliente: o trecho é gerado na hora se faltar
+      console.warn('[Buffer] Falha temporária no pré-carregamento:', e);
     }
     if (version !== this.bufferVersion) return;
     this.activeBatches--;
     // Os que falharam saem da lista e podem ser pedidos de novo, mas não na hora:
-    // lote vazio indica servidor falhando ou sobrecarregado, e repedir a cada trecho só piora
+    // lote vazio indica o motor falhando, e repedir a cada trecho só piora
     items.forEach((it) => this.inFlight.delete(it.index));
     if (received === 0) this.prefetchBackoffUntil = Date.now() + PREFETCH_BACKOFF_MS;
-    // Lendo e o lote rendeu algo: emenda o próximo para o buffer não esvaziar (sem insistir se o servidor está falhando)
+    // Lendo e o lote rendeu algo: emenda o próximo para o buffer não esvaziar
     if (received > 0 && (this.status === 'playing' || this.status === 'buffering')) {
       this.prefetchAhead(this.currentIndex + 1, this.lookahead());
     }
@@ -445,6 +346,13 @@ class SpeechEngine {
     this.setStatus('idle');
   }
 
+  /** Para tudo e esvazia a fila do motor (ex.: livro apagado) */
+  public stopAll() {
+    this.stop();
+    this.clearBuffer();
+    cancelAllSynthesis();
+  }
+
   public togglePlayPause() {
     if (this.status === 'playing' || this.status === 'buffering') {
       this.pause();
@@ -488,10 +396,7 @@ class SpeechEngine {
     }
   }
 
-  /**
-   * Muda o ponto de leitura sem tocar e sem avisar como leitura nova
-   * (ponto que veio de outro aparelho). Só com a leitura parada.
-   */
+  /** Muda o ponto de leitura sem tocar e sem avisar como leitura nova. Só com a leitura parada. */
   public setPosition(index: number) {
     if (this.status === 'playing' || this.status === 'buffering' || this.sentences.length === 0) return;
     this.newSession();
@@ -535,7 +440,7 @@ class SpeechEngine {
   private async speakTextSlice(sentenceIndex: number, sliceText: string, startWord: number) {
     const sessionId = this.newSession();
     this.setStatus('buffering');
-    this.callbacks.onBufferProgress?.(true, 'Sintonizando voz neural...');
+    this.callbacks.onBufferProgress?.(true, 'Preparando a voz...');
 
     const split = splitHead(sliceText);
     if (split) {
@@ -558,41 +463,28 @@ class SpeechEngine {
     }
   }
 
-  /** Sintetiza um texto avulso e devolve a URL do áudio (ou null). `cancel` interrompe o pedido. */
-  /** A voz escolhida falhou no servidor e o trecho veio na voz grátis padrão: avisa uma vez por voz */
-  private fallbackNoticed = new Set<string>();
-  private noticeFallback(voice: VoiceOption) {
-    if (this.fallbackNoticed.has(voice.id)) return;
-    this.fallbackNoticed.add(voice.id);
-    this.callbacks.onNotice?.(
-      voice.engine === 'google'
-        ? `A voz ${voice.name} (Google) está indisponível agora — falta a chave do Google ou ela falhou. Tocando com o Faber.`
-        : `A voz ${voice.name} falhou em alguns trechos no servidor. Esses trechos saíram com o Faber.`
-    );
+  /** A voz falhou no motor: avisa uma vez por mensagem (o trecho é tentado de novo e, se não der, pulado) */
+  private failureNoticed = new Set<string>();
+  private noticeFailure(voice: VoiceOption) {
+    const error = lastSynthesisError();
+    if (!error) return;
+    const key = `${voice.id}|${error}`;
+    if (this.failureNoticed.has(key)) return;
+    this.failureNoticed.add(key);
+    this.callbacks.onNotice?.(`A voz ${voice.name} falhou neste aparelho: ${error}`);
   }
 
-  // 30 s: no Pocket o servidor gera um trecho por vez, e o trecho atual pode esperar o que já estava gerando
-  private async synthesize(text: string, voice: VoiceOption, cancel?: AbortSignal, timeoutMs = 30000): Promise<string | null> {
+  /** Gera o áudio de um texto avulso na hora (passa na frente do pré-carregamento). `cancel` desiste do pedido. */
+  private async synthesize(text: string, voice: VoiceOption, cancel?: AbortSignal, timeoutMs = SYNTH_TIMEOUT_MS): Promise<string | null> {
+    if (cancel?.aborted) return null;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const onCancel = () => controller.abort();
-    if (cancel?.aborted) return null;
     cancel?.addEventListener('abort', onCancel);
     try {
-      const response = await apiFetch('/api/tts/synthesize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({ text, emotion: this.emotion, rate: 1.0, ...voiceSynthesisParams(voice) }),
-      });
-      if (!response.ok) return null;
-      const result = await response.json();
-      if (result.is_silence) return 'SILENCE';
-      if (result.fallback_voice) this.noticeFallback(voice);
-      return result.success && result.audio_url ? `${BACKEND_URL}${result.audio_url}` : null;
-    } catch (err) {
-      if (!cancel?.aborted) console.warn('[SpeechEngine] Falha na síntese:', err);
-      return null;
+      const result = await synthesizeLocal(text, voice, { urgent: true, signal: controller.signal });
+      if (!result && !controller.signal.aborted) this.noticeFailure(voice);
+      return result?.url ?? null;
     } finally {
       clearTimeout(timeoutId);
       cancel?.removeEventListener('abort', onCancel);
@@ -617,17 +509,15 @@ class SpeechEngine {
     // Pré-carregamento contínuo dos próximos trechos
     this.prefetchAhead(currentIdx + 1, this.lookahead());
 
-    let url = this.bufferedUrl(currentIdx);
+    let url = this.audioBuffer.get(currentIdx);
     if (!url && !/[\w\d]/.test(text)) url = 'SILENCE';
-    this.diagOrigin = url ? 'pronto no servidor, baixado na hora' : 'gerado na hora';
-
-    if (!url && this.stopForOffline()) return;
+    this.diagOrigin = url ? 'pronto no buffer' : 'gerado na hora';
 
     if (!url) {
       this.setStatus('buffering');
-      this.callbacks.onBufferProgress?.(true, 'Carregando voz neural...');
+      this.callbacks.onBufferProgress?.(true, 'Preparando a voz...');
 
-      // Trecho já na fila de um lote: pede a frase inteira, que o servidor promove na fila em vez de gerar
+      // Trecho já na fila de um lote: pede a frase inteira, que o motor promove na fila em vez de gerar
       // de novo (dividir geraria início + resto além da frase do lote)
       const split = this.inFlight.has(currentIdx) ? null : splitHead(text);
       if (split) {
@@ -661,8 +551,8 @@ class SpeechEngine {
   }
 
   /**
-   * Toca o início curto do trecho assim que ele fica pronto; o resto, pedido ao mesmo tempo, toca em seguida.
-   * Devolve false se o início não pôde ser sintetizado (quem chamou decide o que fazer).
+   * Toca o início curto do trecho assim que ele fica pronto; o resto, pedido logo depois, toca em seguida.
+   * Devolve false se o início não pôde ser gerado (quem chamou decide o que fazer).
    */
   private async playSplit(index: number, [head, tail]: [string, string], sessionId: number, retryCount: number,
                           startWord = 0): Promise<boolean> {
@@ -670,7 +560,7 @@ class SpeechEngine {
     const voice = this.getVoiceForSentence(index);
     // O resto tem cancelamento próprio: pausar durante o início não pode perdê-lo
     const tailAbort = new AbortController();
-    // O início é pedido primeiro: o servidor (Pocket) gera um por vez, na ordem de chegada
+    // O início é pedido primeiro: o motor gera um por vez, e os urgentes na ordem de chegada
     const headPromise = this.synthesize(head, voice, this.sessionAbort.signal);
     const tailUrl = this.synthesize(tail, voice, tailAbort.signal);
     const headUrl = await headPromise;
@@ -704,7 +594,7 @@ class SpeechEngine {
     return true;
   }
 
-  /** O início terminou: toca o resto do trecho (esperando a síntese, se ainda não chegou) */
+  /** O início terminou: toca o resto do trecho (esperando a geração, se ainda não terminou) */
   private async playSplitTail(index: number, sessionId: number) {
     const tail = this.splitTail;
     this.splitTail = null;
@@ -715,7 +605,7 @@ class SpeechEngine {
       this.setStatus('buffering');
       url = await tail.url;
       if (this.playSessionId !== sessionId || this.currentIndex !== index) return;
-      // O resto não veio (servidor ocupado, tempo esgotado): tenta mais uma vez antes de pular essas palavras
+      // O resto não veio (falha, tempo esgotado): tenta mais uma vez antes de pular essas palavras
       if (!url && tail.segment.words.length) {
         url = await this.synthesize(tail.segment.words.join(' '), this.getVoiceForSentence(index), this.sessionAbort.signal);
         if (this.playSessionId !== sessionId || this.currentIndex !== index) return;
@@ -729,13 +619,10 @@ class SpeechEngine {
     this.playHtmlAudio(url, index, sessionId, MAX_RETRIES, false, tail.audio, tail.segment);
   }
 
-  /** Erro de rede ou áudio expirado: ressintetiza algumas vezes e, se continuar falhando, pula o trecho */
+  /** Falha do motor ou áudio que não tocou: gera de novo algumas vezes e, se continuar falhando, pula o trecho */
   private handlePlaybackFailure(index: number, sessionId: number, retryCount: number) {
     if (this.playSessionId !== sessionId || this.currentIndex !== index) return;
     this.audioBuffer.delete(index);
-
-    // A internet caiu no meio: não adianta repetir nem pular
-    if (this.offlineUrl(index) === null && this.stopForOffline()) return;
 
     if (retryCount < MAX_RETRIES) {
       console.log(`[SpeechEngine] Tentando novamente o trecho ${index} (tentativa ${retryCount + 1})...`);
@@ -747,15 +634,14 @@ class SpeechEngine {
       return;
     }
 
-    // NUNCA cai para voz do Windows/Browser. Se falhar após as tentativas, avança para o próximo trecho
-    console.warn(`[SpeechEngine] Não foi possível carregar áudio para o trecho ${index}, avançando.`);
+    console.warn(`[SpeechEngine] Não foi possível gerar o áudio do trecho ${index}, avançando.`);
     this.callbacks.onBufferProgress?.(false, '');
     this.nextSentence();
   }
 
   private primeNextAudioElement(nextIndex: number) {
     if (nextIndex >= this.sentences.length) return;
-    const nextUrl = this.bufferedUrl(nextIndex);
+    const nextUrl = this.audioBuffer.get(nextIndex);
     if (nextUrl && nextUrl !== 'SILENCE') {
       try {
         const nextAudio = new Audio(nextUrl);
@@ -798,7 +684,7 @@ class SpeechEngine {
       }
     };
     audio.onerror = () => {
-      console.warn('[Audio] Erro ao carregar o áudio do trecho (expirado ou indisponível). Ressintetizando...');
+      console.warn('[Audio] Erro ao carregar o áudio do trecho. Gerando de novo...');
       this.handlePlaybackFailure(index, sessionId, retryCount);
     };
   }
@@ -883,29 +769,16 @@ class SpeechEngine {
       this.pause();
     }
 
-    let url: string | null = null;
-    if (voice.sampleAudioUrl) {
-      url = voice.sampleAudioUrl.startsWith('http') ? voice.sampleAudioUrl : `${BACKEND_URL}${voice.sampleAudioUrl}`;
-    }
-
-    const playUrl = (src: string) =>
-      new Promise<boolean>((resolve) => {
-        const audio = new Audio(src);
+    const url = await this.synthesize(voice.samplePhrase, voice);
+    if (url && url !== 'SILENCE') {
+      await new Promise<boolean>((resolve) => {
+        const audio = new Audio(url);
         this.previewAudio = audio;
         audio.onended = () => resolve(true);
         audio.onerror = () => resolve(false);
         audio.onpause = () => resolve(true); // stopPreview()
         audio.play().catch(() => resolve(false));
       });
-
-    if (url && (await playUrl(url))) {
-      this.previewAudio = null;
-      return;
-    }
-
-    const synthesized = await this.synthesize(voice.samplePhrase, voice);
-    if (synthesized && synthesized !== 'SILENCE') {
-      await playUrl(synthesized);
     }
     this.previewAudio = null;
   }

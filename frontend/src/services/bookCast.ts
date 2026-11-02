@@ -1,9 +1,9 @@
 import type { VoiceOption } from '../types';
-import { VOICES, DEFAULT_VOICE_ID, findVoiceById, isFreeVoice } from '../data/voices';
+import { VOICES, DEFAULT_VOICE_ID, findVoiceById } from '../data/voices';
 
 /**
  * Elenco do livro: três vozes, escolhidas pelo usuário.
- * O tipo de cada trecho vem do backend (text_pipeline): 'n' narração, 'd' fala, 's' texto entre [colchetes], 'h' título.
+ * O tipo de cada trecho vem da importação (bookImport/textPipeline): 'n' narração, 'd' fala, 's' texto entre [colchetes], 'h' título.
  */
 export type VoiceRole = 'narrator' | 'dialogue' | 'system';
 
@@ -21,8 +21,8 @@ export const VOICE_ROLES: { role: VoiceRole; label: string; description: string;
   { role: 'system', label: 'Colchetes [ ]', description: 'Mensagens de sistema e janelas', example: '[Cenário Principal nº 1 concluído!]' },
 ];
 
-// Padrões com vozes do plano grátis (quem é PRO pode trocar no elenco)
-const DEFAULT_DIALOGUE_VOICE = 'cadu';
+// Padrões do elenco (dá para trocar na janela Vozes do livro)
+const DEFAULT_DIALOGUE_VOICE = 'dii';
 const DEFAULT_SYSTEM_VOICE = 'jeff';
 
 const storageKey = (bookId: string) => `gtp_book_cast_${bookId}`;
@@ -66,13 +66,12 @@ export function voiceIdForRole(cast: BookCast, role: VoiceRole): string {
   return cast.narratorVoiceId;
 }
 
-/** Voz que deve ler o trecho, conforme o tipo dele e o elenco. freeOnly: plano grátis (troca vozes PRO pela padrão). */
-export function resolveVoiceForSentence(sentenceIndex: number, cast: BookCast, kinds?: string, freeOnly = false): VoiceOption {
-  const allowed = (v: VoiceOption | undefined) => (v && (!freeOnly || isFreeVoice(v)) ? v : undefined);
-  const narrator = allowed(findVoiceById(cast.narratorVoiceId)) || findVoiceById(DEFAULT_VOICE_ID) || VOICES[0];
+/** Voz que deve ler o trecho, conforme o tipo dele e o elenco */
+export function resolveVoiceForSentence(sentenceIndex: number, cast: BookCast, kinds?: string): VoiceOption {
+  const narrator = findVoiceById(cast.narratorVoiceId) || findVoiceById(DEFAULT_VOICE_ID) || VOICES[0];
   if (!cast.theatreModeEnabled || !kinds) return narrator;
   const role = roleForKind(kinds[sentenceIndex]);
-  return allowed(findVoiceById(voiceIdForRole(cast, role))) || narrator;
+  return findVoiceById(voiceIdForRole(cast, role)) || narrator;
 }
 
 /** A voz escolhida no player é sempre a da narração */

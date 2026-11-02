@@ -1,90 +1,66 @@
 # Aedolia 🎙️📚
 
-Plataforma moderna e imersiva para leitura de PDFs e e-books com síntese de voz neural sincronizada (Karaoke Highlighting), entonação cinematográfica com suspense, pré-carregamento contínuo em buffer (3 a 4 páginas) e **Duplicador de Voz com IA (Instant Voice Cloning)**.
+Leitor de livros com voz, **que roda inteiro no celular**: importa PDF, EPUB, DOCX, TXT, Markdown e HTML, lê em voz alta com destaque da palavra, separa narração, falas e mensagens entre colchetes (cada uma com sua voz) e guarda o ponto de leitura. Não precisa de internet, servidor nem conta.
 
----
+A voz é gerada no processador do próprio celular (vozes Piper pelo motor sherpa-onnx).
 
-## 🚀 Principais Funcionalidades
+> A versão anterior, com servidor (VPS, MariaDB, MinIO, login, plano PRO), está guardada em
+> [`servidor-arquivado/`](servidor-arquivado/README.md) e na etiqueta do Git `versao-servidor-vps`.
 
-1. **Leitura & Sincronia de Voz (Karaoke Sync):**
-   - Destaque em tempo real frase por frase enquanto o áudio é reproduzido.
-   - Alternância entre leitura fluida formatada e visualização do documento original.
-   - Velocidade ajustável (0.75x a 2.0x), salto de sentenças e navegação por capítulos.
+## Como usar
 
-2. **Vozes neurais em português do Brasil:**
-   - Síntese pelo Edge TTS (Microsoft). Catálogo em `backend/components/SinteseVoz/voice_catalog.json`.
-   - Vozes atuais: **Francisca** (básica e jovem) e **Thalita** (básica e madura).
-   - Detalhes e limites medidos em `doc/memoria/voz-e-desempenho.md`.
+| Quero... | Como |
+|---|---|
+| **Gerar o APK** | `powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1` → sai em `apk\aedolia-debug-<data>.apk`. Instale **por cima** do app que já está no celular (não desinstale: isso apaga os livros). |
+| **Testar no PC** | Atalho **Aedolia** na Área de Trabalho ou no Menu Iniciar (ou dois cliques no **`Aedolia-PC.bat`**). Compila o app se o código mudou e abre no navegador, com as mesmas vozes do celular. Atalhos: `deploy\criar-atalhos.ps1`. |
+| **Só compilar** | `cd frontend` e `npm run build` (o `.bat` usa esse build). |
+| **Desenvolver com recarga automática** | `cd frontend` e `npm run dev` (para ouvir as vozes, deixe o `Aedolia-PC.bat` aberto ao mesmo tempo). |
 
-3. **Buffer Contínuo de Páginas (3 a 4 páginas):**
-   - O sistema realiza pré-carregamento em lote das próximas frases em segundo plano.
-   - Reprodução ininterrupta sem silêncios nem pausas entre sentenças.
+Na primeira vez, os scripts baixam sozinhos o que fica fora do Git (~330 MB): o motor de voz e as vozes (`deploy\baixar-motor-voz.ps1`).
 
-4. **Duplicador de Voz com IA (Voice Cloning para Assinantes):**
-   - Gravação de amostra ao vivo com microfone diretamente no navegador (com texto guia de 30s).
-   - Upload de áudios em `.mp3`, `.wav` ou `.m4a`.
-   - Armazenamento no MinIO S3 e ativação imediata como narrador pessoal no Leitor.
+## Vozes
 
-5. **Armazenamento e Banco de Dados (MariaDB + MinIO S3):**
-   - Upload de arquivos PDF/EPUB físicos diretamente para o bucket `ebook-readers-gtp` no MinIO S3.
-   - Persistência de progresso de leitura, perfis e assinaturas PRO no MariaDB (`ebook_readers_gtp`).
+| Voz | | Licença |
+|---|---|---|
+| **Faber** (padrão), Cadu, Jeff | masculinas | dados CC0 |
+| **Dii** | feminina | CC BY-NC-ND 4.0, só uso não comercial |
+| **Miro** | masculina grave | CC BY-NC-ND 4.0, só uso não comercial |
 
----
-
-## 📂 Estrutura do Projeto
+## Estrutura
 
 ```
 .
-├── backend/
-│   ├── components/
-│   │   ├── ProcessadorLivros/     # Extração de texto e sentenças de PDF/TXT
-│   │   ├── SinteseVoz/            # neural_tts.py e voice_cloner.py
-│   │   ├── GestaoAssinaturas/     # Webhooks de pagamento (Kiwify, Stripe, Asaas, n8n)
-│   │   ├── AssistenteIA/          # "Pergunte ao Livro" contextual
-│   │   └── AlertasErro/           # Tratamento de exceções e monitoramento
-│   ├── shared/python/             # Configurações de banco, MariaDB, MinIO e logger
-│   ├── uploads/                   # Diretório de trabalho e cache de áudio
-│   ├── api_server.py              # API Flask (Porta 4000)
-│   ├── requirements.txt           # Dependências Python
-│   └── schema_mariadb.sql         # Esquema do banco de dados MariaDB
-├── frontend/
+├── Aedolia-PC.bat              # abre o app no navegador do PC, com voz (teste)
+├── frontend/                   # o app (React + Vite + Capacitor)
 │   ├── src/
-│   │   ├── components/            # AudioPlayer, UploadModal, VoicePicker, Drawers
-│   │   ├── pages/
-│   │   │   ├── Login/             # Tela de login e landing page Cyber-Dark
-│   │   │   ├── Painel/            # Biblioteca com % lida e vozes favoritas
-│   │   │   ├── Leitor/            # Leitor com karaoke sync e drawer de IA
-│   │   │   ├── Vozes/             # Catálogo de vozes neurais & Duplicador IA
-│   │   │   └── Configuracoes/     # Tipografia, temas e assinatura PRO
-│   │   ├── services/              # speechEngine.ts, pdfParser.ts, api.ts
-│   │   ├── types/                 # Tipos TypeScript
-│   │   └── index.css              # Design System Soft & Bold Cyber-Dark Esmeralda
-│   ├── package.json
-│   └── vite.config.ts
-└── README.md
+│   │   ├── App.tsx             # estado do app: estante, leitor, player, pastas
+│   │   ├── pages/              # Painel (estante), Leitor, Vozes, Configurações
+│   │   ├── components/         # player, leitor, janelas
+│   │   ├── services/
+│   │   │   ├── bookImport/     # importação de livros no aparelho (PDF, EPUB, DOCX, TXT...)
+│   │   │   ├── localTts.ts     # ponte com o motor de voz (celular ou ajudante do PC)
+│   │   │   ├── speechEngine.ts # leitura: fila, pré-carregamento, destaque da palavra
+│   │   │   ├── bookStorage.ts  # livros guardados no aparelho (IndexedDB)
+│   │   │   └── library.ts      # pastas e estatísticas de leitura (no aparelho)
+│   │   └── data/               # catálogo de vozes
+│   └── android/                # projeto Android
+│       ├── app/src/main/java/br/com/iagtp/ebook/
+│       │   ├── LocalTtsEngine.java   # gera a voz no celular (fila com prioridade, cache)
+│       │   ├── LocalTtsPlugin.java   # ponte com o app
+│       │   └── PlaybackService.java  # leitura com a tela apagada, player da notificação
+│       └── tts-assets/         # vozes e fonética (baixadas, fora do Git)
+├── deploy/
+│   ├── build-apk.ps1           # gera o APK
+│   ├── baixar-motor-voz.ps1    # baixa o motor e as vozes
+│   ├── rodar-no-pc.ps1         # usado pelo Aedolia-PC.bat
+│   ├── voz_pc.py               # ajudante de voz do PC (só 127.0.0.1)
+│   ├── criar-atalhos.ps1       # atalhos com ícone na Área de Trabalho e no Menu Iniciar
+│   ├── aedolia.ico             # ícone dos atalhos
+│   └── gerar-icones.cjs        # refaz os ícones do app
+├── doc/memoria/                # como cada parte funciona e problemas já resolvidos
+└── servidor-arquivado/         # versão com servidor, guardada para voltar à VPS
 ```
 
----
+Detalhes em [`doc/memoria/`](doc/memoria/README.md).
 
-## 🛠️ Como Executar Localmente
-
-### 1. Backend (Python 3.10+)
-```bash
-cd backend
-pip install -r requirements.txt
-python main.py
-```
-*O servidor iniciará em `http://localhost:4000`.*
-
-### 2. Frontend (Node.js 18+)
-```bash
-cd frontend
-npm install
-npm run dev
-```
-*Acesse o frontend em `http://localhost:5173`.*
-
----
-
-## 📜 Licença
 Desenvolvido por GTP Smart AI. Todos os direitos reservados.

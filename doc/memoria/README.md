@@ -2,14 +2,15 @@
 
 Anotações importantes sobre como o projeto funciona e como operá-lo. Cada arquivo trata de um assunto.
 
+Desde 02/11/2026 o app roda **só no celular** (sem VPS, sem conta). As anotações que só valiam com servidor
+(deploy, contas, sincronização, downloads offline, voz no servidor, próximos passos) estão em
+[`servidor-arquivado/doc/`](../../servidor-arquivado/doc/).
+
 | Arquivo | Assunto |
 |---|---|
-| [deploy.md](deploy.md) | Como publicar na VPS, onde fica cada coisa e como resolver problemas comuns |
-| [contas-e-seguranca.md](contas-e-seguranca.md) | Login, sessões, quem vê cada livro, pastas por usuário no MinIO, estatísticas de leitura |
-| [apk.md](apk.md) | App Android: como gerar o APK, ferramentas instaladas e problemas já resolvidos |
-| [offline.md](offline.md) | Capítulos baixados para ouvir sem internet no APK (validade de 7 dias) |
-| [voz-e-desempenho.md](voz-e-desempenho.md) | Como funciona a síntese de voz, os limites medidos e o que já foi descoberto sobre engasgos |
-| [extracao-de-livros.md](extracao-de-livros.md) | Como os capítulos saem dos EPUBs, problemas já resolvidos e como reprocessar livros enviados |
-| [sincronizacao.md](sincronizacao.md) | Ponto de leitura entre site e celulares: vale o lido por último |
-| [pastas.md](pastas.md) | Pastas para organizar os livros na estante: banco, rotas e tela |
-| [proximos-passos.md](proximos-passos.md) | Pendências que dependem de criar contas (pagamento, Azure, Google Cloud, e-mail, anúncios) |
+| [apk.md](apk.md) | App Android: como gerar o APK, leitura com a tela apagada, layout, ferramentas e problemas já resolvidos |
+| [voz-no-aparelho.md](voz-no-aparelho.md) | A voz gerada no celular: motor, vozes, licenças, cache, desempenho, como trocar vozes |
+| [dados-no-aparelho.md](dados-no-aparelho.md) | Onde ficam livros, progresso, pastas e estatísticas; atualizar sem perder nada; livros vindos do servidor |
+| [pc.md](pc.md) | Testar no PC com o `Aedolia-PC.bat` (com voz) |
+| [extracao-de-livros.md](extracao-de-livros.md) | Importar livros no aparelho: formatos, capítulos e problemas já resolvidos |
+| [pastas.md](pastas.md) | Pastas para organizar os livros na estante |

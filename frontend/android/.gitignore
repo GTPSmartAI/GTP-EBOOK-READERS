@@ -92,6 +92,9 @@ lint/tmp/
 # Cordova plugins for Capacitor
 capacitor-cordova-android-plugins
 
+# Vozes Piper e fonética do motor de voz (deploy\baixar-motor-voz.ps1; o .aar do motor já está ignorado acima)
+tts-assets/
+
 # Copied web assets
 app/src/main/assets/public
 

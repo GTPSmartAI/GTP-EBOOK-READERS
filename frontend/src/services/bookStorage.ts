@@ -110,19 +110,25 @@ export async function deleteBookFull(id: string): Promise<void> {
   }
 }
 
+/** Capa que apontava para o servidor antigo (não existe mais): o livro fica com o degradê */
+function localCover(cover: string | undefined): string | undefined {
+  return cover && !/^https?:/i.test(cover) ? cover : undefined;
+}
+
 /**
- * Salva apenas metadados leves no localStorage indexados por usuário (evita vazamento de dados entre contas)
+ * Salva os metadados leves (inclui o progresso de leitura) no localStorage.
+ * A capa em imagem fica só no IndexedDB: o localStorage tem pouco espaço.
  */
 export function saveBooksMetadataSafe(books: Book[], userId?: string): void {
   try {
     const key = userId ? `${META_KEY}_${userId}` : META_KEY;
-    const metaList = books.map((b) => ({
+    const metaList = books.filter((b) => !b.isUploading).map((b) => ({
       id: b.id,
       title: b.title,
       author: b.author,
       type: b.type,
       coverGradient: b.coverGradient,
-      coverImage: b.coverImage,
+      coverImage: b.coverImage?.startsWith('data:') ? undefined : localCover(b.coverImage),
       totalWords: b.totalWords,
       durationMinutes: b.durationMinutes,
       readingProgress: b.readingProgress,
@@ -141,10 +147,12 @@ export function saveBooksMetadataSafe(books: Book[], userId?: string): void {
 }
 
 /**
- * Carrega a lista de livros combinando metadados e armazenamento IndexedDB filtrados por usuário
+ * Carrega a estante: livros completos do IndexedDB com o progresso mais novo dos metadados,
+ * mais os livros que só têm metadados (o texto ficava no servidor antigo e nunca foi aberto neste aparelho).
  */
 export async function loadInitialBooks(userId?: string): Promise<Book[]> {
   const loadedList: Book[] = [];
+  const loadedIds = new Set<string>();
 
   // Progresso de leitura é gravado nos metadados a cada frase; a cópia completa no IndexedDB fica com o valor antigo
   const progressById = new Map<string, { lastReadSentenceIndex?: number; readingProgress?: number; progressReadAt?: number; folderId?: string | null }>();
@@ -169,48 +177,43 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
       req.onerror = () => resolve([]);
     });
 
-    if (allFromDb.length > 0) {
-      const filtered = allFromDb.filter((b) => {
-        // Livro de outra conta que já usou este aparelho nunca aparece
-        return Boolean(userId) && b.userId === userId;
-      });
-
-      filtered.forEach((stored) => {
-        const progress = progressById.get(stored.id);
-        const b: Book = progress
+    // Aparelho de uma pessoa só: todo livro guardado nele é dela (antes havia filtro por conta)
+    allFromDb.forEach((stored) => {
+      const progress = progressById.get(stored.id);
+      const b: Book = {
+        ...stored,
+        coverImage: localCover(stored.coverImage),
+        ...(progress
           ? {
-              ...stored,
               lastReadSentenceIndex: progress.lastReadSentenceIndex ?? stored.lastReadSentenceIndex,
               readingProgress: progress.readingProgress ?? stored.readingProgress,
               progressReadAt: progress.progressReadAt ?? stored.progressReadAt,
               // A pasta também muda sem regravar a cópia completa
               folderId: progress.folderId !== undefined ? progress.folderId : stored.folderId,
             }
-          : stored;
-        inMemoryBooks.set(b.id, b);
-        loadedList.push(b);
-      });
-      if (loadedList.length > 0) {
-        return loadedList;
-      }
-    }
+          : {}),
+      };
+      inMemoryBooks.set(b.id, b);
+      loadedList.push(b);
+      loadedIds.add(b.id);
+    });
   } catch (err) {
     console.warn('[BookStorage] IndexedDB inicial vazio ou falhou:', err);
   }
 
-  // 2. Fallback: lê metadados do localStorage indexado por usuário
+  // 2. Livros que só têm metadados (sem o texto neste aparelho)
   try {
     const key = userId ? `${META_KEY}_${userId}` : META_KEY;
     const savedMeta = localStorage.getItem(key);
     if (savedMeta) {
       const parsed = JSON.parse(savedMeta);
       if (Array.isArray(parsed)) {
-        return parsed.map((m: any) => ({
+        return loadedList.concat(parsed.filter((m: any) => m?.id && !loadedIds.has(m.id)).map((m: any) => ({
           id: m.id,
           title: m.title,
           author: m.author || 'Autor Desconhecido',
           coverGradient: m.coverGradient || 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          coverImage: m.coverImage,
+          coverImage: localCover(m.coverImage),
           type: m.type || 'pdf',
           content: '',
           sentences: [],
@@ -224,12 +227,12 @@ export async function loadInitialBooks(userId?: string): Promise<Book[]> {
           uploadedAt: m.uploadedAt || new Date().toISOString(),
           userId: m.userId,
           folderId: m.folderId ?? null,
-        }));
+        })));
       }
     }
   } catch {
     // ignora
   }
 
-  return [];
+  return loadedList;
 }

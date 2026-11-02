@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, BookOpen, Sparkles } from 'lucide-react';
-import { extractCoverThumbnail } from '../services/pdfParser';
+import { extractCoverPreview } from '../services/bookImport';
 import type { Book } from '../types';
 
 interface UploadModalProps {
@@ -51,7 +51,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     // Tenta gerar prévia rápida da capa se for PDF ou EPUB
     setIsExtractingPreview(true);
     try {
-      const coverThumb = await extractCoverThumbnail(file);
+      const coverThumb = await extractCoverPreview(file);
       if (coverThumb) {
         setPreviewCover(coverThumb);
       }
@@ -117,7 +117,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     // 3. FECHA A TELA DE SUBINDO IMEDIATAMENTE (requisito do usuário!)
     onClose();
 
-    // 4. Inicia o upload e processamento em background
+    // 4. Prepara o livro em segundo plano (no aparelho)
     if (onStartUpload) {
       onStartUpload(selectedFile, optimisticBook, previewCover || undefined);
     }
@@ -176,7 +176,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 Importar Livro ou Documento
               </h2>
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                Suporta todos os tipos de arquivos
+                O livro é preparado aqui mesmo, sem internet
               </span>
             </div>
           </div>
@@ -339,7 +339,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                     Clique ou arraste qualquer arquivo aqui
                   </p>
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Suporta PDF, EPUB, DOCX, TXT, MD, MOBI e todos os formatos
+                    PDF, EPUB, DOCX, TXT, Markdown, HTML ou livro .json do Aedolia
                   </p>
                 </div>
               </>
@@ -449,7 +449,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               }}
             >
               <Upload size={15} />
-              <span>Subir Documento</span>
+              <span>Importar</span>
             </button>
           </div>
         </form>

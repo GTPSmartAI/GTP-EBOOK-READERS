@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Play, Check, Heart, Plus, Volume2, Sparkles } from 'lucide-react';
+import { X, Play, Check, Heart, Volume2 } from 'lucide-react';
 import type { VoiceOption } from '../types';
 import { VOICES, ENGINE_BADGE } from '../data/voices';
 import { speechEngine } from '../services/speechEngine';
@@ -10,39 +10,23 @@ interface VoicePickerModalProps {
   onClose: () => void;
   selectedVoice: VoiceOption;
   onSelectVoice: (voice: VoiceOption) => void;
-  /** Plano PRO: libera as vozes premium (no grátis elas aparecem com cadeado) */
-  isProUser?: boolean;
-  onNavigateToCloner?: () => void;
 }
 
-// Abas por idioma: cada voz fala um idioma só
-type TabType = 'pt-BR' | 'pt-PT' | 'en' | 'es' | 'created' | 'favorites';
+// Todas as vozes são em português e geradas no aparelho
+type TabType = 'all' | 'favorites';
 
 const LANGUAGE_TABS: { id: TabType; label: string }[] = [
-  { id: 'pt-BR', label: '🇧🇷 Português' },
-  { id: 'pt-PT', label: '🇵🇹 Portugal' },
-  { id: 'en', label: '🇺🇸 Inglês' },
-  { id: 'es', label: '🇪🇸 Espanhol' },
-  { id: 'created', label: 'Minhas ✨' },
+  { id: 'all', label: '🇧🇷 Todas' },
   { id: 'favorites', label: 'Favoritas ❤️' },
 ];
-
-const tabForLanguage = (lang: string | undefined): TabType => {
-  if (!lang) return 'pt-BR';
-  if (lang.startsWith('en')) return 'en';
-  if (lang.startsWith('es')) return 'es';
-  return lang === 'pt-PT' ? 'pt-PT' : 'pt-BR';
-};
 
 export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
   isOpen,
   onClose,
   selectedVoice,
   onSelectVoice,
-  isProUser = false,
-  onNavigateToCloner,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>(() => tabForLanguage(selectedVoice?.lang));
+  const [activeTab, setActiveTab] = useState<TabType>('all');
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   useEscapeKey(isOpen, onClose);
 
@@ -75,26 +59,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Vozes clonadas locais
-  const clonedVoices: VoiceOption[] = (() => {
-    try {
-      const saved = localStorage.getItem('gtp_cloned_voices');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  })();
-
-  const allVoicesList = [...clonedVoices, ...VOICES];
-
-  const displayedVoices = allVoicesList
-    .filter((v) => {
-      if (activeTab === 'favorites') return favoriteIds.includes(v.id);
-      if (activeTab === 'created') return clonedVoices.some((c) => c.id === v.id);
-      return !v.isCloned && tabForLanguage(v.lang) === activeTab;
-    })
-    // No grátis as vozes liberadas vêm primeiro; no PRO, as premium
-    .sort((a, b) => (a.tier === b.tier ? 0 : (a.tier === 'premium') === isProUser ? -1 : 1));
+  const displayedVoices = VOICES.filter((v) => activeTab !== 'favorites' || favoriteIds.includes(v.id));
 
   return (
     <div style={{
@@ -215,68 +180,6 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
           flexDirection: 'column',
           gap: '16px',
         }}>
-          {/* Card de Ação: Create / Subir Nova Voz */}
-          <div>
-            <span style={{
-              fontSize: '10px',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: '#64748b',
-              display: 'block',
-              marginBottom: '8px',
-            }}>
-              Personalização & Duplicador
-            </span>
-
-            <button
-              onClick={() => {
-                onClose();
-                onNavigateToCloner?.();
-              }}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 16px',
-                borderRadius: '16px',
-                background: 'rgba(16, 185, 129, 0.08)',
-                border: '1px dashed rgba(16, 185, 129, 0.4)',
-                color: '#f8fafc',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 200ms',
-              }}
-            >
-              <div style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 900,
-                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-              }}>
-                <Plus size={18} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc' }}>
-                    Subir ou Gravar Nova Voz
-                  </span>
-                  <Sparkles size={12} color="#34d399" />
-                </div>
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                  Envie áudio MP3/WAV ou use o microfone para criar narradores
-                </span>
-              </div>
-            </button>
-          </div>
-
           {/* Subtítulo da Lista */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -287,11 +190,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                 letterSpacing: '0.08em',
                 color: '#64748b',
               }}>
-                {activeTab === 'favorites'
-                  ? 'Vozes Favoritas'
-                  : activeTab === 'created'
-                  ? 'Vozes Criadas por Você'
-                  : `Vozes em ${LANGUAGE_TABS.find((t) => t.id === activeTab)?.label.replace(/^\S+\s/, '')}`}
+                {activeTab === 'favorites' ? 'Vozes Favoritas' : 'Vozes em português'}
               </span>
               <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>
                 {displayedVoices.length} disponíveis
@@ -304,9 +203,6 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                 const isSelected = selectedVoice.id === voice.id;
                 const isFav = favoriteIds.includes(voice.id);
                 const isPreviewing = previewingId === voice.id;
-
-                const isPremium = voice.tier === 'premium';
-                const isBasic = voice.tier === 'basic';
 
                 return (
                   <div
@@ -356,33 +252,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                             {voice.name}
                           </span>
 
-                          {/* Badges de estilo */}
-                          {isPremium && (
-                            <span style={{
-                              fontSize: '9px',
-                              fontWeight: 800,
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              background: 'rgba(245, 158, 11, 0.18)',
-                              color: '#fbbf24',
-                              border: '1px solid rgba(245, 158, 11, 0.35)',
-                            }}>
-                              {isProUser ? '★ PRO' : '🔒 PRO'}
-                            </span>
-                          )}
-                          {isBasic && (
-                            <span style={{
-                              fontSize: '9px',
-                              fontWeight: 800,
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              background: 'rgba(148, 163, 184, 0.12)',
-                              color: '#94a3b8',
-                              border: '1px solid rgba(148, 163, 184, 0.25)',
-                            }}>
-                              GRÁTIS
-                            </span>
-                          )}
+                          {/* Badge do motor */}
                           {voice.engine && ENGINE_BADGE[voice.engine] && (
                             <span style={{
                               fontSize: '9px',

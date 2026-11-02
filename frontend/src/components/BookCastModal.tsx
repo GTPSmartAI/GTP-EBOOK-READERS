@@ -57,7 +57,7 @@ export const BookCastModal: React.FC<BookCastModalProps> = ({
     if (!voice) return;
     setPreviewingRole(role);
     speechEngine
-      .previewVoice({ ...voice, sampleAudioUrl: undefined, samplePhrase: example })
+      .previewVoice({ ...voice, samplePhrase: example })
       .finally(() => setPreviewingRole((current) => (current === role ? null : current)));
   };
 
@@ -180,7 +180,7 @@ export const BookCastModal: React.FC<BookCastModalProps> = ({
                       <optgroup key={group.lang} label={group.label}>
                         {group.voices.map((v) => (
                           <option key={v.id} value={v.id}>
-                            {v.tier === 'premium' ? '★ ' : ''}{v.name} {v.gender === 'female' ? '(F)' : '(M)'} — {v.tag}
+                            {v.name} {v.gender === 'female' ? '(F)' : '(M)'} — {v.tag}
                           </option>
                         ))}
                       </optgroup>

@@ -8,13 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "build:android": "tsc -b && vite build --mode android && cap sync android"
+    "build:android": "tsc -b && vite build && cap sync android"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.5.2",
-    "@capgo/capacitor-social-login": "^8.5.11",
     "jszip": "^3.10.2",
     "lucide-react": "^1.48.0",
     "pdfjs-dist": "^6.3.289",

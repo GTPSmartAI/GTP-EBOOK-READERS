@@ -1,42 +1,26 @@
 import React from 'react';
-import { 
-  BookOpen, 
-  Home, 
-  Mic2, 
-  Sliders, 
-  Upload, 
-  Crown, 
-  User, 
-  LogOut
+import {
+  BookOpen,
+  Home,
+  Mic2,
+  Sliders,
+  Upload,
 } from 'lucide-react';
 import type { AppPage } from '../../types';
-import type { UserProfile } from '../../services/api';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { AedoliaMark } from '../brand/AedoliaMark';
 
 interface AppHeaderProps {
   activePage: AppPage;
   onNavigate: (page: AppPage) => void;
-  user: any;
-  userProfile: UserProfile | null;
   onOpenUpload: () => void;
-  onOpenSubscription: () => void;
-  onOpenAuth: () => void;
-  onSignOut?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
   activePage,
   onNavigate,
-  user,
-  userProfile,
   onOpenUpload,
-  onOpenSubscription,
-  onOpenAuth,
-  onSignOut,
 }) => {
-  const isPro = userProfile?.subscription_tier === 'pro' || userProfile?.subscription_tier === 'unlimited';
-
   const navTabs: { id: AppPage; label: string; icon: React.ReactNode }[] = [
     { id: 'painel', label: 'Início', icon: <Home size={15} /> },
     { id: 'leitor', label: 'Leitor', icon: <BookOpen size={15} /> },
@@ -47,7 +31,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const isMobile = useIsMobile();
 
   // Celular: a navegação fica no menu de baixo (MobileBottomNav); aqui só a marca.
-  // A assinatura e a conta ficam na aba Configurações.
   if (isMobile) {
     return (
       <header style={{
@@ -205,115 +188,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           }}
         >
           <Upload size={14} />
-          <span>Subir PDF</span>
+          <span>Importar livro</span>
         </button>
-
-        {/* Subscription Plan Badge */}
-        {!isPro ? (
-          <button
-            onClick={onOpenSubscription}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '7px 14px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.25) 100%)',
-              border: '1px solid rgba(245, 158, 11, 0.4)',
-              color: '#f59e0b',
-              fontSize: '12px',
-              fontWeight: 800,
-            }}
-          >
-            <Crown size={14} />
-            <span>Assinar PRO</span>
-          </button>
-        ) : (
-          <button
-            onClick={onOpenSubscription}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '12px',
-              background: 'rgba(16, 185, 129, 0.15)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              color: '#10b981',
-              fontSize: '11px',
-              fontWeight: 800,
-            }}
-          >
-            <Crown size={13} />
-            <span>PRO ATIVO</span>
-          </button>
-        )}
-
-        {/* User Status / Login */}
-        {user ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div 
-              onClick={() => onNavigate('configuracoes')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '5px 12px',
-                borderRadius: '12px',
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                cursor: 'pointer',
-              }}
-              title="Acessar Configurações da Conta"
-            >
-              <div style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '50%',
-                background: '#10b981',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '11px',
-                color: '#fff',
-                fontWeight: 800,
-              }}>
-                {(user.full_name || user.email || 'U')[0].toUpperCase()}
-              </div>
-              <span style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 600, maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user.full_name || user.username}
-              </span>
-            </div>
-
-            {onSignOut && (
-              <button
-                onClick={onSignOut}
-                style={{ padding: '8px', color: '#94a3b8' }}
-                title="Sair da Conta"
-              >
-                <LogOut size={16} />
-              </button>
-            )}
-          </div>
-        ) : (
-          <button
-            onClick={onOpenAuth}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '7px 14px',
-              borderRadius: '12px',
-              background: '#10b981',
-              color: '#ffffff',
-              fontSize: '12px',
-              fontWeight: 700,
-            }}
-          >
-            <User size={14} />
-            <span>Entrar</span>
-          </button>
-        )}
       </div>
     </header>
   );

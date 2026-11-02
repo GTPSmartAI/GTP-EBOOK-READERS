@@ -5,36 +5,23 @@ import {
   Moon, 
   Sun, 
   Book, 
-  Monitor, 
-  Crown, 
-  LogOut
+  Monitor,
 } from 'lucide-react';
 import type { ReaderSettings, ThemeMode, FontFamily } from '../../types';
-import type { UserProfile } from '../../services/api';
 import { ReadingStatsPanel } from '../../components/ReadingStatsPanel';
-import { AccountSecurityCard } from '../../components/AccountSecurityCard';
-import { OfflineDownloadsCard } from '../../components/OfflineDownloadsCard';
-import { AdminSettingsCard } from '../../components/AdminSettingsCard';
+import { VoiceEngineCard } from '../../components/VoiceEngineCard';
 
 interface ConfiguracoesProps {
   settings: ReaderSettings;
   onUpdateSettings: (newSettings: Partial<ReaderSettings>) => void;
-  user: UserProfile;
-  userProfile: UserProfile | null;
-  onOpenSubscription: () => void;
-  onSignOut?: () => void;
+  ownerName: string;
 }
 
 export const Configuracoes: React.FC<ConfiguracoesProps> = ({
   settings,
   onUpdateSettings,
-  user,
-  userProfile,
-  onOpenSubscription,
-  onSignOut,
+  ownerName,
 }) => {
-  const isPro = userProfile?.subscription_tier === 'pro' || userProfile?.subscription_tier === 'unlimited';
-
   const themes: { id: ThemeMode; label: string; icon: React.ReactNode; bg: string; color: string }[] = [
     { id: 'dark', label: 'Escuro Cyber', icon: <Moon size={16} />, bg: '#0c1015', color: '#f8fafc' },
     { id: 'oled', label: 'Preto OLED', icon: <Monitor size={16} />, bg: '#000000', color: '#ffffff' },
@@ -86,114 +73,11 @@ export const Configuracoes: React.FC<ConfiguracoesProps> = ({
           </h1>
         </div>
         <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
-          Personalize sua tipografia de leitura, temas, preferências de narração e assinatura.
+          {ownerName}, tudo fica neste aparelho: livros, ponto de leitura, estatísticas e a voz.
         </p>
       </div>
 
-      {/* Card 1: Perfil & Assinatura */}
-      <div 
-        className="floating-card"
-        style={{
-          padding: '28px',
-          borderRadius: '24px',
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--border-subtle)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '20px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{
-            width: '52px',
-            height: '52px',
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontWeight: 800,
-            fontSize: '20px',
-            boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
-          }}>
-            {(user.full_name || user.email || 'U')[0].toUpperCase()}
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc' }}>
-                {user.full_name || user.username}
-              </h3>
-              <span style={{
-                fontSize: '11px',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                background: isPro ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-                color: isPro ? '#10b981' : '#94a3b8',
-                fontWeight: 700,
-              }}>
-                {isPro ? 'PLANO PRO ATIVO' : 'PLANO GRATUITO'}
-              </span>
-            </div>
-
-            <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '2px' }}>
-              {user.email} · @{user.username}
-            </p>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={onOpenSubscription}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '10px 18px',
-              borderRadius: '14px',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              color: '#ffffff',
-              fontSize: '12px',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            <Crown size={15} />
-            <span>{isPro ? 'Gerenciar Assinatura' : 'Fazer Upgrade PRO'}</span>
-          </button>
-
-          {user && onSignOut && (
-            <button
-              onClick={onSignOut}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 16px',
-                borderRadius: '14px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
-                color: '#ef4444',
-                fontSize: '12px',
-                fontWeight: 700,
-              }}
-            >
-              <LogOut size={15} />
-              <span>Sair</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      <AccountSecurityCard user={user} />
-
-      {user.is_admin && <AdminSettingsCard />}
-
-      <OfflineDownloadsCard />
+      <VoiceEngineCard />
 
       <ReadingStatsPanel />
 

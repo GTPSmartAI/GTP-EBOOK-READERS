@@ -1,21 +1,23 @@
 # App Android (APK)
 
-Última atualização: 27/09/2026
+Última atualização: 02/11/2026 (app sem servidor: tudo roda no celular)
 
 ## Como funciona
 
-- O app usa o **Capacitor 8**: o mesmo site React (build do Vite) roda dentro de um WebView nativo. Não há código separado para o celular.
+- O app usa o **Capacitor 8**: o app React (build do Vite) roda dentro de um WebView nativo. O código nativo próprio fica em
+  `frontend/android/app/src/main/java/br/com/iagtp/ebook/`: player com a tela apagada (`PlaybackService`) e a voz (`LocalTtsEngine`, veja [voz-no-aparelho.md](voz-no-aparelho.md)).
 - O projeto Android fica em `frontend/android/` e a configuração em `frontend/capacitor.config.ts`.
 - Identificador do app: `br.com.iagtp.ebook`. Nome: **Aedolia** (assinatura "por GTP Smart"; antes se chamava Ebook Readers GTP).
 - **Logo:** livro aberto com ondas de som, redesenhada em vetor em `frontend/public/aedolia-mark.svg` (no app, componente `frontend/src/components/brand/AedoliaMark.tsx`). Ícone do app e da aba: logo branca sobre quadrado verde em degradê; tela de abertura: logo verde e o nome sobre fundo escuro. Ícone adaptável do Android: fundo em `res/drawable/ic_launcher_bg.xml`.
 - Para refazer todos os ícones depois de mudar a logo: `cd frontend; npm install --no-save sharp; node ..\deploy\gerar-icones.cjs`, e depois gerar o APK.
-- O identificador **não muda** com o nome: trocar faria o Android tratar como outro app (não atualiza o instalado) e exigiria refazer o login com Google. O domínio `ebook.iagtp.com.br` e o bucket `ebook-readers-gtp` também continuam.
-- O build do APK usa o modo `android` do Vite (arquivo `frontend/.env.android`), que aponta para `https://backend-api.iagtp.com.br`. Sem isso o app tentaria `localhost:4000`, que não existe no celular.
-- O backend já aceita o app: o CORS está liberado para qualquer origem em `/api/*`. No Android, a origem do app é `https://localhost`.
+- O identificador e a chave de assinatura **não podem mudar**: são eles que fazem o APK novo instalar por cima mantendo os livros
+  (veja [dados-no-aparelho.md](dados-no-aparelho.md)).
+- **Tamanho:** ~346 MB, quase tudo vozes (5 x 60 MB). Só para celulares 64 bits (`abiFilters 'arm64-v8a'`).
+- `versionCode` 2 / `versionName` 2.0 = primeira versão sem servidor. Subir a cada versão nova.
 
 ## Como gerar o APK
 
-**O deploy já gera o APK sozinho** (`deploy\deploy.ps1`, veja [deploy.md](deploy.md)). Para gerar só o APK, sem publicar, na raiz do projeto, no PowerShell:
+Na raiz do projeto, no PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1
@@ -24,25 +26,27 @@ powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1
 O APK sai em `apk\aedolia-debug-<data>.apk` (a pasta `apk\` não vai para o Git). Leva uns 30 segundos depois do primeiro build.
 
 O script faz:
-1. `npm run build:android` no frontend (build no modo android + `cap sync android`).
-2. Mapeia o `frontend` numa unidade virtual `E:` e roda o Gradle de lá (veja o problema dos acentos abaixo).
-3. Copia o APK para `apk\` com data e hora no nome.
+1. Baixa o motor de voz e as vozes se faltarem (`deploy\baixar-motor-voz.ps1`, ~330 MB, fora do Git).
+2. `npm run build:android` no frontend (build + `cap sync android`).
+3. Mapeia o `frontend` numa unidade virtual `E:` e roda o Gradle de lá (veja o problema dos acentos abaixo).
+4. Copia o APK para `apk\` com data e hora no nome.
 
-**Toda mudança no frontend precisa de um APK novo.** O app não baixa o site da internet; os arquivos vão dentro do APK.
+**Toda mudança no frontend precisa de um APK novo.** Os arquivos do app vão dentro do APK.
 
 ## Leitura com a tela apagada
 
 - O Android congela o app quando a tela apaga. Para a voz continuar, o app liga um **serviço em primeiro plano** (`frontend/android/app/src/main/java/br/com/iagtp/ebook/PlaybackService.java`) enquanto a leitura está tocando ou pausada.
 - O serviço mostra o **player de mídia** do Android (notificação e tela de bloqueio), feito com MediaSession (`androidx.media`):
-  - título "Livro – Capítulo" e a capa do livro (baixada da URL do MinIO);
+  - título "Livro – Capítulo" e a capa do livro (imagem guardada no aparelho);
   - barra de progresso **do capítulo atual**. Dá para arrastar, e isso leva ao trecho correspondente;
   - botões −15s / play-pausa / +15s. No Android 13 ou mais novo, o −15/+15 são "ações personalizadas" da MediaSession, porque o sistema monta o player sozinho;
   - os fones Bluetooth controlam o play/pausa, e anterior/próxima dos fones voltam/avançam 15s. Essas teclas são tratadas em `onMediaButtonEvent` do `PlaybackService`: o player não anuncia "pular faixa" (`ACTION_SKIP_TO_NEXT`), porque aí o Android 13+ troca os botões −15/+15 da notificação por "anterior/próxima", e sem isso o sistema não chamava `onSkipToNext`.
-- Play/pausa dos fones (`KEYCODE_MEDIA_PLAY_PAUSE`, `HEADSETHOOK`) viram o comando `toggle`, e o site decide pelo estado real do motor de voz (`speechEngine.getStatus()`), não pelo estado da tela, que pode estar atrasado em segundo plano. Com a leitura pausada, um botão do fone segura o processador por até 1 minuto (`holdBriefly`), para o site conseguir tratar o comando e baixar o áudio com a tela apagada.
+- Play/pausa dos fones (`KEYCODE_MEDIA_PLAY_PAUSE`, `HEADSETHOOK`) viram o comando `toggle`, e o site decide pelo estado real do motor de voz (`speechEngine.getStatus()`), não pelo estado da tela, que pode estar atrasado em segundo plano. Com a leitura pausada, um botão do fone segura o processador por até 1 minuto (`holdBriefly`), para o app conseguir tratar o comando e gerar a voz com a tela apagada.
 - **O player do Android precisa continuar ligado com a leitura pausada.** Ele é desligado quando o status vira `idle`. Antes, pular (±15 s, capítulo) com a leitura pausada mudava o status para `idle`: o player sumia e os fones paravam de funcionar. Agora o salto mantém `paused`.
 - No navegador (site no computador ou no celular), os fones e as teclas de mídia usam o Media Session do navegador (`navigator.mediaSession`, no `App.tsx`): play, pausa, ±15 s.
 - O tempo do capítulo é **estimado** por palavras (145 palavras por minuto × velocidade), igual ao player da tela (`frontend/src/utils/readingTime.ts`). O Android anda a barra sozinho; o app só reenvia a posição quando ela se afasta mais de 4 s da mostrada.
-- Enquanto toca, o serviço segura o processador (wake lock) e o Wi-Fi para baixar os próximos áudios.
+- Enquanto toca, o serviço segura o processador (wake lock), e a voz dos próximos trechos continua sendo gerada. A trava de Wi-Fi
+  (para baixar áudio do servidor) foi tirada em 02/11/2026.
 - O site liga e desliga o serviço por `frontend/src/services/nativePlayback.ts` (plugin `BackgroundPlayback`, registrado no `MainActivity.java`). Os botões do player chegam como evento `command` e são tratados no `App.tsx`. No navegador essas chamadas não fazem nada.
 - No Android 13 ou mais novo, o app pede a permissão de notificação no primeiro play.
 - Alguns celulares (Xiaomi, Samsung, Motorola) ainda matam apps em segundo plano pela "otimização de bateria". Se a voz parar com a tela apagada, coloque o app como **"Sem restrições"** na bateria.
@@ -52,7 +56,7 @@ O script faz:
 - Abaixo de 760 px de largura, o hook `frontend/src/hooks/useIsMobile.ts` troca para o layout compacto: barra do leitor com ícones e o player em três linhas com botões grandes.
 - Navegação no celular: **menu embaixo, só com ícones** (`frontend/src/components/layout/MobileBottomNav.tsx`): Início, Leitor, **+ redondo verde (subir livro)**, Vozes, Configurações. O cabeçalho de cima mostra só o logo e o nome. No computador a navegação continua no cabeçalho.
 - Regra (celular e computador): **dentro do livro** aparece só o player, e o menu de baixo some; **fora do livro** aparece o menu, e o player some. A leitura continua tocando fora do livro, e o controle fica no player de notificação do Android.
-- Botão "voltar" do Android (`@capacitor/app`, no `App.tsx`), igual a um navegador: primeiro fecha a janela aberta por cima (subir livro, PRO, capítulos, vozes, etc., na ordem inversa em que abriram); sem janela, volta para a **tela anterior** (histórico `pageHistoryRef`, até 50 telas); sem histórico e no Início, minimiza o app em vez de fechar, para não parar a leitura. Todo `setActivePage` do App grava no histórico. Em `npm run dev`, `window.__aedoliaBack()` faz o mesmo "voltar" para testes.
+- Botão "voltar" do Android (`@capacitor/app`, no `App.tsx`), igual a um navegador: primeiro fecha a janela aberta por cima (importar livro, capítulos, vozes, etc., na ordem inversa em que abriram); sem janela, volta para a **tela anterior** (histórico `pageHistoryRef`, até 50 telas); sem histórico e no Início, minimiza o app em vez de fechar, para não parar a leitura. Todo `setActivePage` do App grava no histórico. Em `npm run dev`, `window.__aedoliaBack()` faz o mesmo "voltar" para testes.
 - Para conferir o layout de celular com o Edge sem tela (headless), coloque o app num `<iframe>` de 390 px: a janela do navegador tem largura mínima de ~500 px e corta a foto.
 - O player de computador tinha três blocos de largura fixa na mesma linha. No celular isso empurrava o botão de play para fora da tela.
 
@@ -73,5 +77,7 @@ Não foram colocadas no PATH do sistema; o `build-apk.ps1` define `JAVA_HOME` e 
 ## Problemas já resolvidos (não repetir)
 
 - **Caminho com acentos.** A pasta do projeto se chama "Criação de pdf Readers". O plugin Android recusa o caminho e o `cmd` não acha o `gradlew.bat`. Solução: `subst E: <pasta frontend>` e rodar `E:\android\gradlew.bat` pelo caminho completo. Também foi colocado `android.overridePathCheck=true` em `frontend/android/gradle.properties`.
-- **Livro grande "carregando" para sempre no celular.** O `/api/books/<id>/content` mandava o texto duas vezes (`content` inteiro e `sentences`) e sem compressão: 52 MB num livro de 3,7 milhões de palavras. Agora vai sem o `content`, com gzip (~8,6 MB), e a versão compactada fica salva em disco (`uploads/extracted/<id>.content.json.gz`). O leitor mostra o progresso do download e, se falhar, o botão "Tentar de novo".
+- **Gradle trocado sozinho para 9.7.1** (02/11/2026, provavelmente pela extensão Java da IDE): o plugin Android 8.13 não funciona a partir
+  do Gradle 9.6. A versão certa é a do Git, **8.14.3** (`frontend/android/gradle/wrapper/gradle-wrapper.properties`). Se o build falhar
+  com "InternalProblems ... removed in Gradle 9.6", volte esse arquivo: `git checkout -- frontend/android/gradle/wrapper/gradle-wrapper.properties`.
 - **`sdkmanager --licenses` pelo PowerShell não aceita as respostas "y" do pipe.** Use `cmd /c "sdkmanager.bat --licenses < arquivo_com_ys.txt"`.

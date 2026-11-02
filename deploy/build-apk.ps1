@@ -1,4 +1,4 @@
-# Gera o APK Android do Aedolia.
+﻿# Gera o APK Android do Aedolia.
 # Uso (na raiz do projeto):
 #   powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1            -> APK de teste (debug)
 #   powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1 -Release   -> APK assinado para distribuir
@@ -17,7 +17,14 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 if (-not (Test-Path "$env:JAVA_HOME\bin\java.exe")) { throw "JDK 21 não encontrado em $env:JAVA_HOME (veja doc/memoria/apk.md)" }
 if (-not (Test-Path "$env:ANDROID_HOME\platforms")) { throw "Android SDK não encontrado em $env:ANDROID_HOME (veja doc/memoria/apk.md)" }
 
-# 1. Build web no modo android (.env.android aponta para a API de produção) e cópia para o projeto Android.
+# 0. Motor de voz e vozes que vão dentro do APK (fora do Git; baixa só o que faltar)
+$tts = Join-Path $frontend 'android\tts-assets\tts'
+$aar = Get-ChildItem (Join-Path $frontend 'android\app\libs') -Filter 'sherpa-onnx-*.aar' -ErrorAction SilentlyContinue
+if (-not $aar -or -not (Test-Path "$tts\espeak-ng-data\en_dict") -or (Get-ChildItem $tts -Directory | Where-Object { Test-Path "$($_.FullName)\model.onnx" }).Count -lt 5) {
+    & (Join-Path $PSScriptRoot 'baixar-motor-voz.ps1')
+}
+
+# 1. Build web e cópia para o projeto Android (o app não usa servidor: tudo roda no celular).
 Push-Location $frontend
 try {
     npm run build:android

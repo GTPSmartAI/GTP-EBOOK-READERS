@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Plugins do próprio app precisam ser registrados antes do super.onCreate
         registerPlugin(BackgroundPlaybackPlugin.class);
+        registerPlugin(LocalTtsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

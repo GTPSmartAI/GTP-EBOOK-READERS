@@ -14,7 +14,7 @@ import {
   FolderInput
 } from 'lucide-react';
 import type { Book, BookFolder, VoiceOption } from '../../types';
-import type { FolderResult } from '../../services/api';
+import type { FolderResult } from '../../services/library';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { FolderBar, MoveToFolderSheet } from './Folders';
 
@@ -208,7 +208,7 @@ export const Painel: React.FC<PainelProps> = ({
             }}
           >
             <Upload size={16} color="#ffffff" />
-            <span>{books.length === 0 ? 'Subir Primeiro PDF' : 'Subir PDF'}</span>
+            <span>{books.length === 0 ? 'Importar primeiro livro' : 'Importar livro'}</span>
           </button>
         </div>
       </div>
@@ -341,7 +341,7 @@ export const Painel: React.FC<PainelProps> = ({
                   }}
                 >
                   <Upload size={16} />
-                  <span>Subir Primeiro PDF</span>
+                  <span>Importar primeiro livro</span>
                 </button>
               )}
             </div>
@@ -452,7 +452,7 @@ export const Painel: React.FC<PainelProps> = ({
                         letterSpacing: '0.04em',
                       }}>
                         <Loader2 size={11} className="animate-spin" />
-                        <span>SUBINDO...</span>
+                        <span>PREPARANDO...</span>
                       </div>
                     ) : (
                       <div style={{
@@ -511,10 +511,10 @@ export const Painel: React.FC<PainelProps> = ({
                         letterSpacing: '0.05em',
                       }}>
                         <Loader2 size={14} className="animate-spin" />
-                        <span>PROCESSANDO NA NUVEM</span>
+                        <span>PREPARANDO O LIVRO</span>
                       </div>
                       <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                        Sincronizando no MinIO & MariaDB...
+                        {Math.round(book.uploadProgress || 0)}% · lendo o arquivo neste aparelho
                       </span>
                     </div>
                   )}
@@ -564,8 +564,9 @@ export const Painel: React.FC<PainelProps> = ({
                   }}>
                     {isUploading ? (
                       <div style={{
-                        width: '100%',
+                        width: `${Math.max(8, Math.round(book.uploadProgress || 0))}%`,
                         height: '100%',
+                        transition: 'width 300ms',
                         background: 'linear-gradient(90deg, #10b981 0%, #38bdf8 50%, #10b981 100%)',
                         backgroundSize: '200% 100%',
                         animation: 'pulse 1.5s infinite',

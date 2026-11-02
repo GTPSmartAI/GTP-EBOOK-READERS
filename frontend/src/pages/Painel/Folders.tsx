@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Folder, FolderOpen, FolderPlus, Pencil, Trash2, Check, X, Library, Inbox } from 'lucide-react';
 import type { Book, BookFolder } from '../../types';
-import type { FolderResult } from '../../services/api';
+import type { FolderResult } from '../../services/library';
 
 // ------------------------------------------------------------------ campo de nome (criar / renomear)
 

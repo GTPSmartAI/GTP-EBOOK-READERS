@@ -1,7 +1,7 @@
 /**
  * Medição das trocas de trecho durante a leitura (só em desenvolvimento, `npm run dev`).
  * Para cada trecho mostra no console:
- * - de onde veio o áudio (já pré-carregado, pronto no servidor mas baixado na hora, ou gerado na hora)
+ * - de onde veio o áudio (já pré-carregado, pronto no buffer, ou gerado na hora)
  * - quanto tempo a leitura ficou parada esperando entre o fim do trecho anterior e o início deste
  * - quanto silêncio vem embutido no começo e no fim do próprio MP3
  * A cada 20 trechos imprime um resumo. `window.__audioDiag()` imprime o resumo na hora.
@@ -11,7 +11,7 @@ export const AUDIO_DIAGNOSTICS = import.meta.env.DEV;
 
 export type AudioOrigin =
   | 'pré-carregado'
-  | 'pronto no servidor, baixado na hora'
+  | 'pronto no buffer'
   | 'gerado na hora'
   | 'gerado na hora (início dividido)'
   | 'resto da frase dividida'
@@ -151,7 +151,7 @@ class AudioDiagnostics {
     console.table(byOrigin);
   }
 
-  /** Mede o silêncio no começo e no fim do MP3 (o áudio vem do cache do servidor, é barato) */
+  /** Mede o silêncio no começo e no fim do áudio (vem do cache local, é barato) */
   private analyze(url: string): Promise<Silence | null> {
     const cached = this.silenceCache.get(url);
     if (cached) return cached;

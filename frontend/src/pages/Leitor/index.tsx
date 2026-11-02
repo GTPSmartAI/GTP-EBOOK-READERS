@@ -1,8 +1,7 @@
 import React from 'react';
 import { 
   BookOpen,
-  MessageSquare, 
-  Bookmark, 
+  Bookmark,
   ArrowLeft
 } from 'lucide-react';
 import type { Book, ReaderSettings } from '../../types';
@@ -19,7 +18,6 @@ interface LeitorPageProps {
   onPlayChapter: (startIndex: number) => void;
   onWordClick?: (sentenceIndex: number, wordIndex: number, word: string) => void;
   onOpenChapters: () => void;
-  onOpenAIChat: () => void;
   onBackToPainel: () => void;
   onOpenUpload?: () => void;
   contentLoad?: { progress: number; failed: boolean } | null;
@@ -36,7 +34,6 @@ export const Leitor: React.FC<LeitorPageProps> = ({
   onPlayChapter,
   onWordClick,
   onOpenChapters,
-  onOpenAIChat,
   onBackToPainel,
   onOpenUpload,
   contentLoad,
@@ -117,7 +114,7 @@ export const Leitor: React.FC<LeitorPageProps> = ({
                 boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
               }}
             >
-              <span>Subir Primeiro PDF</span>
+              <span>Importar primeiro livro</span>
             </button>
           )}
         </div>
@@ -153,7 +150,6 @@ export const Leitor: React.FC<LeitorPageProps> = ({
               ? [{ key: 'cast', icon: <span style={{ fontSize: '16px', lineHeight: 1 }}>🎭</span>, label: isTheatreMode ? 'Vozes ON' : 'Vozes', onClick: onOpenCastModal, active: isTheatreMode }]
               : []),
             { key: 'chapters', icon: <Bookmark size={18} />, label: 'Capítulos', onClick: onOpenChapters, active: false },
-            { key: 'ai', icon: <MessageSquare size={18} />, label: 'Perguntar', onClick: onOpenAIChat, active: false },
           ].map((action) => (
             <button
               key={action.key}
@@ -261,25 +257,6 @@ export const Leitor: React.FC<LeitorPageProps> = ({
           >
             <Bookmark size={14} color="#10b981" />
             <span>Capítulos</span>
-          </button>
-
-          <button
-            onClick={onOpenAIChat}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '5px 10px',
-              borderRadius: '8px',
-              background: 'rgba(16, 185, 129, 0.1)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              color: '#10b981',
-              fontSize: '12px',
-              fontWeight: 700,
-            }}
-          >
-            <MessageSquare size={14} />
-            <span>Pergunte ao Livro</span>
           </button>
         </div>
       </div>

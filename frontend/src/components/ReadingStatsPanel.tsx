@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, ChevronLeft, ChevronRight, Clock, BookOpen, Flame, TrendingUp, Loader2 } from 'lucide-react';
-import { fetchReadingStats } from '../services/api';
-import type { ReadingStats, StatsPeriod } from '../services/api';
+import { computeReadingStats, getLocalOwner } from '../services/library';
+import type { ReadingStats, StatsPeriod } from '../services/library';
+import { readingTracker } from '../services/readingTracker';
 
 /**
  * Estatísticas de leitura real (Configurações): tempo ouvindo e palavras que a voz leu,
@@ -92,18 +93,11 @@ export const ReadingStatsPanel: React.FC = () => {
   const [hover, setHover] = useState<number | null>(null);
 
   useEffect(() => {
-    let current = true;
-    setLoading(true);
+    // Estatísticas guardadas no aparelho: grava o que está pendente e calcula na hora
+    readingTracker.flush();
+    setStats(computeReadingStats(getLocalOwner().id, period, offset));
+    setLoading(false);
     setFailed(false);
-    fetchReadingStats(period, offset).then((data) => {
-      if (!current) return;
-      setLoading(false);
-      if (data) setStats(data);
-      else setFailed(true);
-    });
-    return () => {
-      current = false;
-    };
   }, [period, offset]);
 
   const maxSeconds = useMemo(() => Math.max(60, ...(stats?.series.map((p) => p.seconds) ?? [0])), [stats]);
@@ -195,7 +189,7 @@ export const ReadingStatsPanel: React.FC = () => {
 
       {failed && !stats ? (
         <p style={{ fontSize: '14px', color: 'var(--text-secondary)', textAlign: 'center', padding: '24px 0' }}>
-          Não foi possível carregar as estatísticas. Verifique a internet.
+          Não foi possível carregar as estatísticas.
         </p>
       ) : !stats ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
