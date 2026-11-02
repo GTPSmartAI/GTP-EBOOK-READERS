@@ -1,6 +1,7 @@
 # Voz gerada no aparelho
 
-Última atualização: 02/11/2026. A voz da época do servidor (Piper/Pocket/Google na VPS) está em
+Última atualização: 02/11/2026. **Testado no celular do usuário em 02/11/2026 (APK 2.0, instalado por cima do antigo): funcionou.**
+A voz da época do servidor (Piper/Pocket/Google na VPS) está em
 `servidor-arquivado/doc/voz-e-desempenho.md`.
 
 ## Como funciona
