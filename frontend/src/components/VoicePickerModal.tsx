@@ -13,10 +13,12 @@ interface VoicePickerModalProps {
 }
 
 // Todas as vozes são em português e geradas no aparelho
-type TabType = 'all' | 'favorites';
+type TabType = 'all' | 'azure' | 'offline' | 'favorites';
 
 const LANGUAGE_TABS: { id: TabType; label: string }[] = [
   { id: 'all', label: '🇧🇷 Todas' },
+  { id: 'azure', label: '✨ Estúdio Azure' },
+  { id: 'offline', label: '⚡ No Celular' },
   { id: 'favorites', label: 'Favoritas ❤️' },
 ];
 
@@ -59,7 +61,12 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const displayedVoices = VOICES.filter((v) => activeTab !== 'favorites' || favoriteIds.includes(v.id));
+  const displayedVoices = VOICES.filter((v) => {
+    if (activeTab === 'favorites') return favoriteIds.includes(v.id);
+    if (activeTab === 'azure') return v.engine === 'edge';
+    if (activeTab === 'offline') return v.engine === 'piper';
+    return true;
+  });
 
   return (
     <div style={{
@@ -190,7 +197,7 @@ export const VoicePickerModal: React.FC<VoicePickerModalProps> = ({
                 letterSpacing: '0.08em',
                 color: '#64748b',
               }}>
-                {activeTab === 'favorites' ? 'Vozes Favoritas' : 'Vozes em português'}
+                {activeTab === 'favorites' ? 'Vozes Favoritas' : activeTab === 'azure' ? 'Vozes Estúdio Azure (Online)' : activeTab === 'offline' ? 'Vozes no Celular (Offline)' : 'Todas as vozes em português'}
               </span>
               <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>
                 {displayedVoices.length} disponíveis

@@ -30,11 +30,44 @@ const PREFETCH_BACKOFF_MS = 3000;
 const SYNTH_TIMEOUT_MS = 60000;
 // Pausa extra ao terminar um parágrafo, por cadência da voz (ms em velocidade 1x)
 const PARAGRAPH_PAUSE_MS: Record<string, number> = {
-  natural: 280,
-  rapida: 180,
-  dramatica: 450,
-  espacosa: 650,
+  natural: 650,
+  rapida: 450,
+  dramatica: 850,
+  espacosa: 1000,
 };
+
+/**
+ * Calcula a pausa estratégica antes de avançar para o próximo trecho,
+ * baseando-se na pontuação final do trecho atual e na estrutura (se o próximo trecho é novo parágrafo).
+ */
+function getSentencePauseMs(sentence: string, isNextParagraph: boolean, cadence: string = 'natural'): number {
+  if (isNextParagraph) {
+    return PARAGRAPH_PAUSE_MS[cadence] ?? PARAGRAPH_PAUSE_MS.natural;
+  }
+  const text = (sentence || '').trimEnd();
+  // Reticências no final (... ou …)
+  if (/(?:\.{3,}|…)[”"’'\)\]]*$/.test(text)) {
+    return 550;
+  }
+  // Pergunta ou exclamação (! ou ?)
+  if (/[?!][”"’'\)\]]*$/.test(text)) {
+    return 420;
+  }
+  // Ponto final (.)
+  if (/\.[”"’'\)\]]*$/.test(text)) {
+    return 380;
+  }
+  // Dois pontos ou ponto e vírgula (: ou ;)
+  if (/[:;][”"’'\)\]]*$/.test(text)) {
+    return 300;
+  }
+  // Vírgula ou travessão (ex.: diálogo terminando antes do narrador "— Olá!, disse")
+  if (/[,—–-][”"’'\)\]]*$/.test(text)) {
+    return 220;
+  }
+  // Quebra por limite de caracteres ou continuação sem pontuação forte
+  return 180;
+}
 
 // Trecho sem áudio pronto com pelo menos esta quantidade de palavras começa por um pedaço curto,
 // que é gerado bem mais rápido, enquanto o resto é gerado em seguida
@@ -654,20 +687,26 @@ class SpeechEngine {
     }
   }
 
-  /** Terminou um trecho: avança, com uma pausa curta quando o próximo trecho abre um novo parágrafo */
+  /** Terminou um trecho: avança com pausa proporcional à pontuação e ao fim de parágrafo */
   private advanceAfter(index: number, sessionId: number) {
     if (this.currentIndex !== index || this.playSessionId !== sessionId) return;
     const next = index + 1;
-    if (next < this.sentences.length && this.paragraphStarts.has(next)) {
-      const cadence = this.getVoiceForSentence(index).cadence || 'natural';
-      const pause = Math.round((PARAGRAPH_PAUSE_MS[cadence] ?? PARAGRAPH_PAUSE_MS.natural) / this.rate);
-      audioDiagnostics.setPlannedPause(pause);
-      this.silenceTimer = setTimeout(() => {
-        if (this.currentIndex === index && this.playSessionId === sessionId) this.nextSentence();
-      }, pause);
+    if (next >= this.sentences.length) {
+      this.nextSentence();
       return;
     }
-    this.nextSentence();
+
+    const isNextParagraph = this.paragraphStarts.has(next);
+    const cadence = this.getVoiceForSentence(index).cadence || 'natural';
+    const basePause = getSentencePauseMs(this.sentences[index] || '', isNextParagraph, cadence);
+    const pause = Math.max(80, Math.round(basePause / this.rate));
+
+    audioDiagnostics.setPlannedPause(pause);
+    this.silenceTimer = setTimeout(() => {
+      if (this.currentIndex === index && this.playSessionId === sessionId) {
+        this.nextSentence();
+      }
+    }, pause);
   }
 
   private attachAudioHandlers(audio: HTMLAudioElement, index: number, sessionId: number, retryCount: number) {

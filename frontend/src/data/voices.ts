@@ -9,6 +9,7 @@ export const DEFAULT_VOICE_ID = 'faber';
 /** Selo na lista de vozes */
 export const ENGINE_BADGE: Record<string, { label: string; color: string }> = {
   piper: { label: 'NO CELULAR', color: '#38bdf8' },
+  edge: { label: 'AZURE ESTÚDIO', color: '#10b981' },
 };
 
 export const LANGUAGE_LABELS: Record<string, string> = {
@@ -27,7 +28,7 @@ export const VOICES: VoiceOption[] = catalog.voices.map((v) => ({
   avatarColor: v.avatarColor,
   samplePhrase: v.samplePhrase,
   cadence: v.cadence as VoiceOption['cadence'],
-  engine: 'piper',
+  engine: ((v as { engine?: string }).engine || 'piper') as VoiceOption['engine'],
   model: v.model,
   lengthScale: v.length_scale,
   stability: 0.95,

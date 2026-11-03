@@ -1,21 +1,23 @@
 """
 Aedolia no PC (teste): serve o app compilado (frontend/dist) e gera a voz no próprio computador,
-com as mesmas vozes Piper e o mesmo motor (sherpa-onnx) que o APK usa no celular.
+com as vozes Piper (sherpa-onnx local) e Azure Estúdio (edge-tts).
 
 Só atende este computador (127.0.0.1). Não é servidor de internet.
-Aberto pelo Aedolia-PC.bat (deploy/rodar-no-pc.ps1), que instala o sherpa-onnx em .pc-voz/lib.
+Aberto pelo Aedolia-PC.bat (deploy/rodar-no-pc.ps1).
 
 Rotas:
   GET  /                         app (frontend/dist), com volta para index.html
-  POST /local-tts/synthesize     {"text", "model", "lengthScale"} -> WAV (cabeçalhos X-Duration-Ms, X-Cached)
-  GET  /local-tts/info           {"models": [...], "stats": {...}} (mesmo formato do plugin do celular)
+  POST /local-tts/synthesize     {"text", "model", "lengthScale"} -> áudio (cabeçalhos X-Duration-Ms, X-Cached)
+  GET  /local-tts/info           {"models": [...], "stats": {...}}
   POST /local-tts/clear-cache    apaga os áudios guardados
 """
 
+import asyncio
 import hashlib
 import json
 import mimetypes
 import os
+import re
 import sys
 import threading
 import time
@@ -43,10 +45,70 @@ TARGET_PEAK = 0.89
 MAX_GAIN = 6.0
 NUM_THREADS = 2  # no PC, 2 threads já dão ~11x o tempo real (medido); mais não acelera
 
+EDGE_MODELS = [
+    "pt-BR-FranciscaNeural",
+    "pt-BR-AntonioNeural",
+    "pt-BR-ThalitaMultilingualNeural",
+]
+
 _engines: "OrderedDict[str, sherpa_onnx.OfflineTts]" = OrderedDict()
-_lock = threading.Lock()  # um trecho por vez, como no celular
-_stats = {"generated": 0, "audioSeconds": 0.0, "computeSeconds": 0.0, "lastRealtimeFactor": 0.0,
-          "lastLoadMs": 0, "failures": 0, "lastError": None}
+_lock = threading.Lock()  # um trecho por vez
+_stats = {
+    "generated": 0,
+    "audioSeconds": 0.0,
+    "computeSeconds": 0.0,
+    "lastRealtimeFactor": 0.0,
+    "lastLoadMs": 0,
+    "failures": 0,
+    "lastError": None,
+}
+
+
+def is_edge_model(model: str) -> bool:
+    return model in EDGE_MODELS or (model.startswith("pt-BR-") and "Neural" in model)
+
+
+def normalize_text_for_speech(text: str) -> str:
+    """
+    Normaliza o texto antes da síntese:
+    garante que reticências, travessões, vírgulas e pontuações especiais
+    gerem pausas e respirações reais no motor fonético.
+    """
+    s = text.strip()
+    if not s:
+        return ""
+    # Remove aspas e colchetes que atrapalham fonética
+    s = re.sub(r'["“"”«»]', '', s)
+    s = re.sub(r'[\[\]『』【】]', ' ', s)
+
+    # Colapsa pontuações repetidas
+    s = re.sub(r'([.?!…])\s*([.?!…])+', r'\1', s)
+
+    # Reticências (...) ou (…) no meio da frase viram vírgula com respiro para forçar pausa
+    s = re.sub(r'(\w)\s*(\.{3,}|…)\s*(\w)', r'\1, \3', s)
+
+    # Reticências no final da frase viram ponto final com entonação descendente
+    s = re.sub(r'(\.{3,}|…)\s*$', '.', s)
+
+    # Travessão no início da fala: remove
+    s = re.sub(r'^[—–-]\s*', '', s)
+
+    # Travessão intercalado no meio da oração: vira vírgula com respiro
+    s = re.sub(r'\s*[—–]\s*', ', ', s)
+
+    # Se ficou pontuação forte seguida de vírgula, mantém só a pontuação forte
+    s = re.sub(r'([.?!;:])\s*,', r'\1', s)
+
+    # Garante espaço após pontuações se colado em letra
+    s = re.sub(r'([,;:])([^\s\d])', r'\1 \2', s)
+
+    # Limpa vírgulas duplicadas ou vírgula no início
+    s = re.sub(r'^,\s*', '', s)
+    s = re.sub(r',\s*,+', ',', s)
+
+    # Colapsa múltiplos espaços
+    s = re.sub(r'\s+', ' ', s)
+    return s.strip()
 
 
 def espeak_data_dir() -> str:
@@ -61,7 +123,6 @@ def espeak_data_dir() -> str:
     dest = base / "Aedolia" / "espeak-ng-data"
     if not str(dest).isascii():
         dest = Path("C:\\AedoliaVoz") / "espeak-ng-data"
-    # A cópia vale enquanto tiver os mesmos arquivos da original (ex.: dicionários adicionados depois)
     marker = dest / ".copiado"
     signature = str(sum(1 for p in src.rglob("*") if p.is_file()))
     if not marker.exists() or marker.read_text() != signature:
@@ -74,9 +135,11 @@ def espeak_data_dir() -> str:
 
 
 def available_models():
-    if not TTS_DIR.exists():
-        return []
-    return sorted(d.name for d in TTS_DIR.iterdir() if (d / "model.onnx").exists())
+    models = []
+    if TTS_DIR.exists():
+        models.extend(sorted(d.name for d in TTS_DIR.iterdir() if (d / "model.onnx").exists()))
+    models.extend(EDGE_MODELS)
+    return models
 
 
 def engine(model: str) -> sherpa_onnx.OfflineTts:
@@ -106,10 +169,9 @@ def engine(model: str) -> sherpa_onnx.OfflineTts:
     return tts
 
 
-def cache_file(model: str, length_scale: float, text: str) -> Path:
-    # Mesma chave do celular (modelo|ritmo|texto)
+def cache_file(model: str, length_scale: float, text: str, ext: str = "wav") -> Path:
     key = hashlib.sha1(f"{model}|{length_scale}|{text}".encode("utf-8")).hexdigest()
-    return CACHE / f"{key}.wav"
+    return CACHE / f"{key}.{ext}"
 
 
 def wav_duration_ms(path: Path) -> int:
@@ -117,17 +179,60 @@ def wav_duration_ms(path: Path) -> int:
         return int(w.getnframes() * 1000 / w.getframerate())
 
 
-def synthesize(text: str, model: str, length_scale: float):
-    out = cache_file(model, length_scale, text)
-    if out.exists():
+def mp3_duration_ms(path: Path) -> int:
+    # Edge-TTS gera áudio em ~48kbps (6000 bytes/segundo)
+    size = path.stat().st_size
+    return max(300, int((size / 6000.0) * 1000))
+
+
+def synthesize_edge(text: str, model: str, length_scale: float):
+    out = cache_file(model, length_scale, text, ext="mp3")
+    if out.exists() and out.stat().st_size > 500:
         os.utime(out)
         return out, True
+
     with _lock:
-        if out.exists():
+        if out.exists() and out.stat().st_size > 500:
+            return out, True
+
+        rate_percent = int(round((1.0 / max(0.5, length_scale) - 1.0) * 100))
+        rate_str = f"{rate_percent:+d}%"
+
+        async def _run():
+            import edge_tts
+            comm = edge_tts.Communicate(text, model, rate=rate_str)
+            tmp = out.with_suffix(".tmp")
+            await comm.save(str(tmp))
+            tmp.replace(out)
+
+        start = time.time()
+        asyncio.run(_run())
+        compute = time.time() - start
+        dur_s = out.stat().st_size / 6000.0
+
+        _stats["generated"] += 1
+        _stats["audioSeconds"] += dur_s
+        _stats["computeSeconds"] += compute
+        _stats["lastRealtimeFactor"] = dur_s / compute if compute else 0
+        return out, False
+
+
+def synthesize(text: str, model: str, length_scale: float):
+    text_clean = normalize_text_for_speech(text) or text
+    if is_edge_model(model):
+        return synthesize_edge(text_clean, model, length_scale)
+
+    out = cache_file(model, length_scale, text_clean, ext="wav")
+    if out.exists() and out.stat().st_size > 44:
+        os.utime(out)
+        return out, True
+
+    with _lock:
+        if out.exists() and out.stat().st_size > 44:
             return out, True
         tts = engine(model)
         start = time.time()
-        audio = tts.generate(text, sid=0, speed=1.0 / max(0.5, length_scale))
+        audio = tts.generate(text_clean, sid=0, speed=1.0 / max(0.5, length_scale))
         samples = np.asarray(audio.samples, dtype=np.float32)
         if samples.size == 0:
             raise RuntimeError("A voz não gerou áudio para este trecho")
@@ -151,7 +256,7 @@ def synthesize(text: str, model: str, length_scale: float):
 
 
 def stats():
-    cache_bytes = sum(f.stat().st_size for f in CACHE.glob("*.wav"))
+    cache_bytes = sum(f.stat().st_size for f in CACHE.glob("*.*"))
     rtf = _stats["audioSeconds"] / _stats["computeSeconds"] if _stats["computeSeconds"] else 0
     return {
         "generated": _stats["generated"],
@@ -171,7 +276,7 @@ def stats():
 class Handler(BaseHTTPRequestHandler):
     server_version = "AedoliaPC"
 
-    def log_message(self, fmt, *args):  # sem log de cada pedido
+    def log_message(self, fmt, *args):
         pass
 
     def _json(self, status: int, data):
@@ -213,11 +318,16 @@ class Handler(BaseHTTPRequestHandler):
             _stats["lastError"] = str(e)
             print(f"[voz] falha: {e}")
             return self._json(500, {"error": str(e)})
+
         data = out.read_bytes()
+        is_mp3 = out.suffix == ".mp3"
+        ctype = "audio/mpeg" if is_mp3 else "audio/wav"
+        dur_ms = mp3_duration_ms(out) if is_mp3 else wav_duration_ms(out)
+
         self.send_response(200)
-        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("X-Duration-Ms", str(wav_duration_ms(out)))
+        self.send_header("X-Duration-Ms", str(dur_ms))
         self.send_header("X-Cached", "1" if cached else "0")
         self.send_header("Access-Control-Expose-Headers", "X-Duration-Ms, X-Cached")
         self.end_headers()

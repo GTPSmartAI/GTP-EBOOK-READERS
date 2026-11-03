@@ -143,8 +143,42 @@ final class LocalTtsEngine {
         return models;
     }
 
+    private String resolveModel(String model) {
+        if ("pt-BR-FranciscaNeural".equals(model) || "azure-francisca".equals(model)) {
+            return "pt_BR-dii-high";
+        }
+        if ("pt-BR-AntonioNeural".equals(model) || "azure-antonio".equals(model)) {
+            return "pt_BR-miro-high";
+        }
+        if ("pt-BR-ThalitaMultilingualNeural".equals(model) || "azure-thalita".equals(model)) {
+            return "pt_BR-dii-high";
+        }
+        return model;
+    }
+
+    private static String normalizeText(String text) {
+        if (text == null || text.isEmpty()) return "";
+        String s = text.trim();
+        s = s.replaceAll("[\"“”«»]", "");
+        s = s.replaceAll("[\\[\\]『』【】]", " ");
+        s = s.replaceAll("([.?!…])\\s*([.?!…])+", "$1");
+        s = s.replaceAll("(\\w)\\s*(\\.{3,}|…)\\s*(\\w)", "$1, $3");
+        s = s.replaceAll("(\\.{3,}|…)\\s*$", ".");
+        s = s.replaceAll("^[—–-]\\s*", "");
+        s = s.replaceAll("\\s*[—–]\\s*", ", ");
+        s = s.replaceAll("([.?!;:])\\s*,", "$1");
+        s = s.replaceAll("([,;:])([^\\s\\d])", "$1 $2");
+        s = s.replaceAll("^,\\s*", "");
+        s = s.replaceAll(",\\s*,+", ",");
+        s = s.replaceAll("\\s+", " ");
+        return s.trim();
+    }
+
     void synthesize(String id, String text, String model, float lengthScale, boolean urgent, Listener listener) {
-        String key = cacheKey(model, lengthScale, text);
+        String resolvedModel = resolveModel(model);
+        String cleanText = normalizeText(text);
+        if (cleanText.isEmpty()) cleanText = text;
+        String key = cacheKey(resolvedModel, lengthScale, cleanText);
         File out = new File(cacheDir, key + ".wav");
         if (out.exists() && out.length() > 44) {
             //noinspection ResultOfMethodCallIgnored
@@ -155,7 +189,7 @@ final class LocalTtsEngine {
         synchronized (lock) {
             Job job = jobsByKey.get(key);
             if (job == null) {
-                job = new Job(key, text, model, lengthScale, seqCounter++);
+                job = new Job(key, cleanText, resolvedModel, lengthScale, seqCounter++);
                 jobsByKey.put(key, job);
                 queue.add(job);
             }

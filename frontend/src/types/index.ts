@@ -53,7 +53,7 @@ export interface VoiceOption {
   clarity: number; // 0 to 1
   speed: number;
   cadence?: 'espacosa' | 'dramatica' | 'natural';
-  engine: 'piper';
+  engine: 'piper' | 'edge';
   model: string; // pasta do modelo Piper dentro do APK (assets/tts/<model>)
   lengthScale: number; // ritmo da voz: maior = mais devagar
 }

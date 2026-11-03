@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { VoiceOption } from '../types';
+import { normalizeTextForSpeech } from '../utils/textSpeechNormalize';
 
 /**
  * Voz gerada no próprio celular (plugin LocalTts: LocalTtsEngine.java, modelos Piper no sherpa-onnx).
@@ -82,13 +83,14 @@ export function synthesize(
 ): Promise<SynthResult | null> {
   const { urgent = false, signal } = options;
   if (signal?.aborted) return Promise.resolve(null);
-  const key = keyFor(text, voice);
+  const speechText = normalizeTextForSpeech(text) || text;
+  const key = keyFor(speechText, voice);
 
   let entry = pending.get(key);
   if (!entry) {
     const id = `t${++seq}`;
     const created: Pending = { id, waiters: 0, urgent, promise: Promise.resolve(null) };
-    created.promise = request(id, text, voice, urgent).finally(() => {
+    created.promise = request(id, speechText, voice, urgent).finally(() => {
       if (pending.get(key) === created) pending.delete(key);
     });
     entry = created;
